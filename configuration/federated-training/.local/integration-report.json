@@ -1,0 +1,9 @@
+{
+  "status": "passed",
+  "run_id": "1ee2c4da-345a-4791-9b40-3d2b7c4b1273",
+  "all_workers_have_sidecars": true,
+  "denial_before_execution": true,
+  "denial_after_revocation": true,
+  "active_revalidation": true,
+  "rabbitmq_result_received": true
+}

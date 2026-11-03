@@ -1,0 +1,84 @@
+# Keep this format for this part, because this works for adding additional scrape configs!
+# To view the values available, see the specific version used in the script from the below links:
+# See the helm chart > Default values for examples: https://artifacthub.io/packages/helm/prometheus-community/kube-prometheus-stack
+# Or see as a backup https://github.com/prometheus-community/helm-charts/blob/main/charts/kube-prometheus-stack/values.yaml
+# You can also view the yaml of the pods afterwards by using k9s and pressing y on the pod for example to see the configuration and values, etc.
+prometheus:
+  prometheusSpec:
+    # Set global scrape interval and scrape timeout
+    # Set this to higher to avoid cadvisor sometimes timing out
+    scrapeInterval: "30s"
+    scrapeTimeout: "25s"
+    evaluationInterval: "1m"
+
+    # Use the corresponding node for this
+    nodeSelector:
+      # Likely cannot use the Values.node here, since this is not in the templates folder and just used as a file, so hardcode it here equal to Values.node
+      kubernetes.io/hostname: dynamos
+
+    # Additional scrape configs (on top of already present/default ones)
+    additionalScrapeConfigs:
+      # Job to gather metrics like CPU and memory using cadvisor daemonset
+      - job_name: 'cadvisor'
+        # Configures Kubernetes service discovery to find pods
+        kubernetes_sd_configs:
+          - role: pod
+        # Configures relabeling rules
+        relabel_configs:
+          # Keep only pods with the label app=cadvisor (otherwise all other metrics will be included, but you only want cadvisor metrics)
+          # Make sure that the name label is present in the pod (or in this case daemonset) you are creating! Otherwise, Prometheus cannot see it
+          - source_labels: [__meta_kubernetes_pod_label_name]
+            action: keep
+            regex: cadvisor
+          # Replace target with pod IP and port 8080 (where cadvisor runs)
+          - source_labels: [__meta_kubernetes_pod_ip]
+            action: replace
+            target_label: __address__
+            regex: (.+)
+            replacement: ${1}:8080
+          # No custom labels/replacements are set here (do NOT change this, because now it works!), so that the defaults of
+          # cadvisor are used! For example, you can group by name of the container with: container_label_io_kubernetes_container_name
+
+# Docker Desktop has a limitation that it will not compile node-exporter (Error response from daemon: path / is mounted on / but it is not a shared or slave mount)
+# Below is a workaround for that, see Troubleshooting documentation for explanation on this workaround
+prometheus-node-exporter:
+  hostRootFsMount:
+    enabled: false
+
+# Enable grafana and add loki data source
+grafana:
+  enabled: true
+
+  sidecar:
+    datasources:
+      enabled: true
+  # This was not explicitely listed in the values available, but this did work to get it on the specific node.
+  nodeSelector:
+    kubernetes.io/hostname: dynamos
+
+  # Additional data sources
+  additionalDataSources:
+    # Loki datasource
+    - name: Loki
+      type: loki
+      access: proxy
+      orgId: 1
+      url: http://loki.monitoring.svc.cluster.local:3100
+      basicAuth: false
+      # Set default to false (prometheus-stack uses prometheus itself as default probably)
+      isDefault: false
+      version: 1
+      editable: false
+
+# Alertmanager pod
+alertmanager:
+  alertmanagerSpec:
+    nodeSelector:
+      kubernetes.io/hostname: dynamos
+
+# Prometheus Operator pod
+prometheusOperator:
+  nodeSelector:
+    kubernetes.io/hostname: dynamos
+
+# Kube State Metrics pod did not have any nodeSelector and it was not working, so it is fine to run that on a random pod.

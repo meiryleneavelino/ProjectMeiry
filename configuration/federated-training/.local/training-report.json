@@ -1,0 +1,105 @@
+{
+  "id": "e0a7dd5a-2d11-476c-9ccc-360027d2d1fe",
+  "status": "completed",
+  "algorithm": "logistic-regression-v1",
+  "organizations": [
+    "UVA",
+    "VU",
+    "TUDELFT"
+  ],
+  "rounds": 3,
+  "dataset_id": "synthetic-local-v1",
+  "local_epochs": 2,
+  "integration": "dynamos",
+  "completed_rounds": 3,
+  "round_history": [
+    {
+      "round": 1,
+      "organizations": [
+        {
+          "organization": "UVA",
+          "job": "training-e0a7dd5a2d11476c-r1",
+          "namespace": "uva",
+          "status": "completed",
+          "accuracy": 0.8958333333333334,
+          "validation_loss": 0.30273656575388336
+        },
+        {
+          "organization": "VU",
+          "job": "training-e0a7dd5a2d11476c-r1",
+          "namespace": "vu",
+          "status": "completed",
+          "accuracy": 0.9583333333333334,
+          "validation_loss": 0.2231974591931991
+        },
+        {
+          "organization": "TUDELFT",
+          "job": "training-e0a7dd5a2d11476c-r1",
+          "namespace": "tudelft",
+          "status": "completed",
+          "accuracy": 0.8958333333333334,
+          "validation_loss": 0.3355344504047168
+        }
+      ]
+    },
+    {
+      "round": 2,
+      "organizations": [
+        {
+          "organization": "UVA",
+          "job": "training-e0a7dd5a2d11476c-r2",
+          "namespace": "uva",
+          "status": "completed",
+          "accuracy": 0.8958333333333334,
+          "validation_loss": 0.24987505713160366
+        },
+        {
+          "organization": "VU",
+          "job": "training-e0a7dd5a2d11476c-r2",
+          "namespace": "vu",
+          "status": "completed",
+          "accuracy": 0.9791666666666666,
+          "validation_loss": 0.17276874717542656
+        },
+        {
+          "organization": "TUDELFT",
+          "job": "training-e0a7dd5a2d11476c-r2",
+          "namespace": "tudelft",
+          "status": "completed",
+          "accuracy": 0.9166666666666666,
+          "validation_loss": 0.28703184051825553
+        }
+      ]
+    },
+    {
+      "round": 3,
+      "organizations": [
+        {
+          "organization": "UVA",
+          "job": "training-e0a7dd5a2d11476c-r3",
+          "namespace": "uva",
+          "status": "completed",
+          "accuracy": 0.8958333333333334,
+          "validation_loss": 0.2293695255325662
+        },
+        {
+          "organization": "VU",
+          "job": "training-e0a7dd5a2d11476c-r3",
+          "namespace": "vu",
+          "status": "completed",
+          "accuracy": 0.9791666666666666,
+          "validation_loss": 0.14751581777139608
+        },
+        {
+          "organization": "TUDELFT",
+          "job": "training-e0a7dd5a2d11476c-r3",
+          "namespace": "tudelft",
+          "status": "completed",
+          "accuracy": 0.875,
+          "validation_loss": 0.25761925458249424
+        }
+      ]
+    }
+  ],
+  "created_at": 1793283541.1345932
+}

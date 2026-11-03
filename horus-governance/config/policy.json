@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "policy_id": "horus-standard-v1",
+  "max_code_bytes": 1048576,
+  "deductions": {"high": 25, "medium": 10, "low": 2},
+  "minimum_score": 70,
+  "maximum_high_findings": 0
+}

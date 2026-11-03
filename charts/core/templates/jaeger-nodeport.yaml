@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: jaeger-collector-nodeport
+  namespace: linkerd-jaeger
+spec:
+  type: NodePort
+  ports:
+    - name: grpc
+      port: 14250
+      targetPort: 14250
+      nodePort: 32000
+    - name: http
+      port: 14268
+      targetPort: 14268
+      nodePort: 32001
+    - name: collector
+      port: 55678
+      targetPort: 55678
+      nodePort: 32002
+    - name: collector2
+      port: 4317
+      targetPort: 4317
+      nodePort: 32003
+  selector:
+    component: collector
+
+---
+# apiVersion: policy.linkerd.io/v1alpha1
+# kind: AuthorizationPolicy
+# metadata:
+#   namespace: linkerd-jaeger
+#   name: jaeger-admin
+# spec:
+#   targetRef:
+#     group: policy.linkerd.io
+#     kind: Server
+#     name: jaeger-ui
+#   requiredAuthenticationRefs:
+#     - kind: ServiceAccount
+#       name: default
+#       namespace: core
+
+apiVersion: policy.linkerd.io/v1beta1
+kind: ServerAuthorization
+metadata:
+  namespace: linkerd-jaeger
+  name: allow-grafana-to-jaeger
+spec:
+  server:
+    selector:
+      matchLabels:
+        component: jaeger
+  client:
+    unauthenticated: true # Or use 'authenticated' and provide a service account
+
+---
+
+
+apiVersion: policy.linkerd.io/v1beta1
+kind: ServerAuthorization
+metadata:
+  namespace: core
+  name: allow-jaeger-to-grafana
+spec:
+  server:
+    selector:
+      matchLabels:
+        app: grafana
+  client:
+    unauthenticated: true # Or use 'authenticated' and provide a service account
+

@@ -1,0 +1,27 @@
+{
+  "format": "dynamos-logistic-regression-v1",
+  "algorithm": "logistic-regression-v1",
+  "features": [
+    "feature_1",
+    "feature_2",
+    "feature_3",
+    "feature_4"
+  ],
+  "classes": [
+    0,
+    1
+  ],
+  "organizations": [
+    "UVA",
+    "VU",
+    "TUDELFT"
+  ],
+  "rounds": 3,
+  "coefficients": [
+    2.4562501002152723,
+    -1.7711183456365767,
+    1.1856216328624474,
+    0.4624332973104406
+  ],
+  "intercept": -0.05694815567107016
+}

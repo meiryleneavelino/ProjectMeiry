@@ -1,0 +1,4 @@
+secret:
+  password: defaultPassword
+
+node: dynamos

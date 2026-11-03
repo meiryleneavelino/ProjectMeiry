@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package dynamos;
+
+option go_package = "github.com/Jorrit05/DYNAMOS/pkg/proto";
+// import "google/protobuf/empty.proto";
+import "google/protobuf/struct.proto";
+import "google/protobuf/any.proto";
+import "generic.proto";
+
+// The sidecar definition.
+service Microservice {
+  rpc SendData(MicroserviceCommunication) returns (ContinueReceiving) {}
+}
+
+message MicroserviceCommunication {
+  string type = 1;
+  string request_type = 2;
+  google.protobuf.Struct data = 3;
+  map<string, string> metadata = 4;
+  google.protobuf.Any original_request = 5;
+  RequestMetadata request_metadata = 6;
+  map<string, bytes> traces = 7;// Binary or textual representation of span context
+  bytes result = 8;
+  repeated string routing_data = 9; // To be used for persistent jobs
+}
+
+message ContinueReceiving {
+  bool continue_receiving = 1;
+}

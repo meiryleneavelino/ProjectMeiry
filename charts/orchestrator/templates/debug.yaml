@@ -1,0 +1,19 @@
+# apiVersion: v1
+# kind: Pod
+# metadata:
+#   name: debug
+#   namespace: {{ .Values.Namespace }}
+# spec:
+#   containers:
+#   - name: debug
+#     image: nicolaka/netshoot
+#     command: ['sleep', '3600']
+#     stdin: true
+#     tty: true
+#     volumeMounts:
+#     - name: etcd-startup
+#       mountPath: /app/etcd
+#   volumes:
+#     - name: etcd-startup
+#       persistentVolumeClaim:
+#         claimName: etcd-pvc

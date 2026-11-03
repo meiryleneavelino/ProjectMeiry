@@ -1,0 +1,20 @@
+[
+  {
+    "name": "computeToData",
+    "computeProvider": "dataProvider",
+    "resultRecipient": "requestor",
+    "weight": 100
+  },
+  {
+    "name": "dataThroughTtp",
+    "computeProvider": "other",
+    "resultRecipient": "requestor",
+    "weight": 200
+  },
+  {
+    "name": "trainThroughClients",
+    "computeProvider": "other",
+    "resultRecipient": "requestor",
+    "weight": 50
+  }
+]

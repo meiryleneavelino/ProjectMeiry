@@ -1,0 +1,13 @@
+FROM docker:27-cli
+ARG TARGETARCH
+ARG KUBECTL_VERSION=v1.30.0
+ARG KIND_VERSION=v0.23.0
+ARG HELM_VERSION=v4.3.0
+RUN apk add --no-cache bash ca-certificates curl && \
+    curl -fsSL "https://dl.k8s.io/release/${KUBECTL_VERSION}/bin/linux/${TARGETARCH}/kubectl" -o /usr/local/bin/kubectl && \
+    curl -fsSL "https://kind.sigs.k8s.io/dl/${KIND_VERSION}/kind-linux-${TARGETARCH}" -o /usr/local/bin/kind && \
+    curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar.gz" | tar -xz -C /tmp && \
+    mv "/tmp/linux-${TARGETARCH}/helm" /usr/local/bin/helm && \
+    chmod +x /usr/local/bin/kubectl /usr/local/bin/kind /usr/local/bin/helm
+WORKDIR /workspace/Scattered-Directive
+CMD ["bash"]

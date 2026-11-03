@@ -1,0 +1,31 @@
+{
+  "context": "kind-scattered-training",
+  "verified_at": 1793280719.869765,
+  "organizations": {
+    "uva": {
+      "read_local": true,
+      "write_denied": true,
+      "no_api_token": true,
+      "other_organization_denied": true,
+      "egress_denied": true,
+      "dataset_hash": "f69bd0bd8b5e4e3fce42c6bc59c3b2afdd438233c338fbe3c5e0f8c78a07a330"
+    },
+    "vu": {
+      "read_local": true,
+      "write_denied": true,
+      "no_api_token": true,
+      "other_organization_denied": true,
+      "egress_denied": true,
+      "dataset_hash": "2ee6db40d3583ffada8b5b9a9c70f59bcadb698196b77bc37376309683d88bcc"
+    },
+    "tudelft": {
+      "read_local": true,
+      "write_denied": true,
+      "no_api_token": true,
+      "other_organization_denied": true,
+      "egress_denied": true,
+      "dataset_hash": "1f1e5b18d89c78e5476c808918a33ee193c069a0e182868f85788bc791213523"
+    }
+  },
+  "status": "passed"
+}

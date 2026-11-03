@@ -1,0 +1,44 @@
+# orchestrator deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: policy-enforcer
+  namespace: {{ .Values.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: policy-enforcer
+  template:
+    metadata:
+      labels:
+        app: policy-enforcer
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: {{ .Values.node }}
+      containers:
+      - name: policy-enforcer
+        image: dynamos1/policy-enforcer:{{ .Values.branchNameTag }}
+        imagePullPolicy: Always
+        env:
+        - name: OC_AGENT_HOST
+          value: {{ .Values.tracingEndpoint }}
+        # resources:
+        #   requests:
+        #     memory: "128Mi"
+        #   limits:
+        #     memory: "256Mi"
+
+      - name: sidecar
+        image: {{ .Values.dockerArtifactAccount }}/sidecar:{{ .Values.branchNameTag }}
+        imagePullPolicy: Always
+        env:
+        - name: AMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rabbit
+              key: password
+        - name: AMQ_USER
+          value: normal_user
+        - name: OC_AGENT_HOST
+          value: {{ .Values.tracingEndpoint }}

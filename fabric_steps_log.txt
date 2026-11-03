@@ -1,0 +1,47 @@
+FABRIC log
+
+-originally tried on the default version of the jupyter FABRIC
+-11/09 tried "bleeding edge" version 
+	(it looks like it works, but the execution never ends...) (takes ~5 min) (then goes to the after-boot-config and there is getting stuck...)
+	(I think it was more than 1:30h and it still is stuck; I willinterrupt)
+	TODO: try different parameters on the slice.submit
+- nodes seem to work, I get output from all the nodes (via the execute and the list_nodes)
+- there might be some issue with the Tokyo nodes... (others seem ok)
+
+notebook 2 seems ok 
+
+Notebook 3 
+after some tricks to get all the ips (I had to do the last one manually, because otherwise it would get stuck) 
+	but it seemed to finish ok with this hack 
+
+
+nodebook 4:
+there were some warnings 
+but at the end seems reasonable. I assume it is OK 
+
+notebook 5:
+had to assign manually the agents and the thirdparties variables
+but worked otherwise. 
+
+--------------------------------
+cloned SD locally 	 
+
+new venv: 
+dynamos_fabric_env
+
+(active env)
+
+install fablib https://github.com/fabric-testbed/fabrictestbed-extensions
+pip install fabrictestbed-extensions
+
+
+
+
+TODO: 
+- Now to make sure it makes sense
+- find a way to monitor k8s 
+	- probably will need to do SSH and then k9s 
+	- read thesis in case it has info on it 
+- find a way to run test request (maybe there is something on his repo?) 
+- 
+- 

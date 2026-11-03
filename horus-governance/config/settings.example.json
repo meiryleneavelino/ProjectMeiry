@@ -1,0 +1,4 @@
+{
+  "researcher": {"name": "Meirylene Avelino", "organization": "TUDELFT", "pseudonym": "researcher-local-001"},
+  "training_url": "http://127.0.0.1:8096/api/v1/ml"
+}

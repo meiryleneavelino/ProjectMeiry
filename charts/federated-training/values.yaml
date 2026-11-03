@@ -1,0 +1,13 @@
+image: scattered-federated-training:local
+apiToken: ""
+networkVerified: false
+integrated:
+  enabled: false
+  image: scattered-integrated-services:local
+  signingKey: ""
+  rabbitPassword: ""
+  user: sandbox-researcher
+organizations:
+  - uva
+  - vu
+  - tudelft

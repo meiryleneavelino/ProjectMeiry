@@ -1,0 +1,5 @@
+Namespace: core
+
+loki:
+  dns: loki.core.svc.cluster.local
+  port: "3100"

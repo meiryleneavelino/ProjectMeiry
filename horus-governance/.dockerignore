@@ -1,0 +1,13 @@
+*
+!config/
+!config/policy.json
+!config/organizations.json
+!config/settings.example.json
+!requirements.lock
+!app/
+!app/**
+!sast/
+!sast/contracts.py
+!sast/analyze.py
+!sast/rules.yaml
+!sast/docker_runner.py

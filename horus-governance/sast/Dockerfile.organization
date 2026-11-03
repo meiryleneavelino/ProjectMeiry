@@ -1,0 +1,5 @@
+ARG BASE_IMAGE=horus-sast-base:local
+FROM ${BASE_IMAGE}
+ARG ORGANIZATION
+ENV HORUS_ORGANIZATION=${ORGANIZATION}
+LABEL org.horus.analysis.organization=${ORGANIZATION}

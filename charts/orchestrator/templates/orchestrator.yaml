@@ -1,0 +1,90 @@
+# orchestrator deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orchestrator
+  namespace: {{ .Values.Namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: orchestrator
+  template:
+    metadata:
+      labels:
+        app: orchestrator
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: {{ .Values.node }}
+      containers:
+      - name: orchestrator
+        image: {{ .Values.dockerArtifactAccount }}/orchestrator:{{ .Values.branchNameTag }}
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8080
+        env:
+        - name: OC_AGENT_HOST
+          value: {{ .Values.tracingEndpoint }}
+        volumeMounts:
+        - name: etcd-startup
+          mountPath: /app/etcd
+        # resources:
+        #   requests:
+        #     memory: "128Mi"
+        #   limits:
+        #     memory: "256Mi"
+      - name: sidecar
+        image: {{ .Values.dockerArtifactAccount }}/sidecar:{{ .Values.branchNameTag }}
+        imagePullPolicy: Always
+        env:
+        - name: AMQ_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: rabbit
+              key: password
+        - name: AMQ_USER
+          value: normal_user
+        - name: OC_AGENT_HOST
+          value: {{ .Values.tracingEndpoint }}
+      volumes:
+      - name: etcd-startup
+        persistentVolumeClaim:
+          claimName: etcd-pvc
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orchestrator
+  namespace: {{ .Values.Namespace }}
+spec:
+  selector:
+    app: orchestrator
+  ports:
+    - name: http-orchestrator-api
+      protocol: TCP
+      port: 8080
+      targetPort: 8080
+  type: ClusterIP
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: orchestrator-ingress
+  namespace: {{ .Values.Namespace }}
+  annotations:
+    nginx.ingress.kubernetes.io/service-upstream: "true"
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: orchestrator.orchestrator.svc.cluster.local
+    http:
+      paths:
+      - pathType: Prefix
+        path: "/api/v1"
+        backend:
+          service:
+            name: orchestrator
+            port:
+              number: 8080

@@ -1,0 +1,143 @@
+# Define Persistent Volume (PV) explicitely on the node, otherwise, the PVC cannot find it. This did work without PV on the local setup, but for the FABRIC this was required.
+# https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-v1/
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: etcd-pv
+spec:
+  capacity:
+    storage: 20Mi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+      # local path on node
+    path: "/mnt/etcd-data"
+  persistentVolumeReclaimPolicy: Retain
+  # Use the dynamos-core node for this
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - {{ .Values.node }}
+---
+# https://kubernetes.io/docs/reference/kubernetes-api/config-and-storage-resources/persistent-volume-claim-v1/
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: etcd-pvc
+  namespace: orchestrator
+  annotations:
+    "linkerd.io/inject": disabled
+spec:
+  # binds to the PV above
+  volumeName: etcd-pv
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Mi
+---
+# This is a different job that now just verifies the files, since we do not have internet access in FABRIC. Therefore, the workaround is to manually add it.
+# https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/job-v1/
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: init-etcd-pvc
+  namespace: orchestrator
+spec:
+  template:
+    metadata:
+      annotations:
+        "linkerd.io/inject": "disabled"
+    # Use the DYNAMOS core node for this, see https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/#label-selectors
+    spec:
+      nodeSelector:
+        kubernetes.io/hostname: {{ .Values.node }}
+      containers:
+      - name: init
+        image: busybox
+        # Command to verify files have been created
+        command:
+          - /bin/sh
+          - -c
+          - |
+            echo "Files in /etcd (PVC mount):"
+            ls -la /etcd
+        volumeMounts:
+        - name: pvc-volume
+          mountPath: /etcd
+      restartPolicy: OnFailure
+      volumes:
+      - name: pvc-volume
+        persistentVolumeClaim:
+          claimName: etcd-pvc
+
+# # Define Persistent Volume (PV) explicitely on the node, otherwise, the PVC cannot find it.
+# # This did work without PV on the local setup, but for the FABRIC this was required.
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: etcd-pv
+# spec:
+#   capacity:
+#     storage: 20Mi
+#   accessModes:
+#     - ReadWriteOnce
+#   hostPath:
+#       # local path on node
+#     path: "/mnt/etcd-data"
+#   persistentVolumeReclaimPolicy: Retain
+# ---
+# apiVersion: v1
+# kind: PersistentVolumeClaim
+# metadata:
+#   name: etcd-pvc
+#   namespace: orchestrator
+#   annotations:
+#     "linkerd.io/inject": disabled
+# spec:
+#   # binds to the PV above
+#   volumeName: etcd-pv
+#   accessModes:
+#     - ReadWriteOnce
+#   resources:
+#     requests:
+#       storage: 20Mi
+#
+# ---
+# apiVersion: batch/v1
+# kind: Job
+# metadata:
+#   name: init-etcd-pvc
+#   namespace: orchestrator
+# spec:
+#   template:
+#     metadata:
+#       annotations:
+#         "linkerd.io/inject": "disabled"
+#       containers:
+#       - name: init
+#         image: curlimages/curl
+#         command:
+#           - /bin/sh
+#           - -c
+#           - |
+#             base_url="https://raw.githubusercontent.com/Javernus/DYNAMOS/main/configuration/etcd_launch_files"
+#             files="agreements.json archetype.json datasets.json microservices.json optional_microservices.json requestType.json"
+#
+#             git clone https://github.com/Javernus/DYNAMOS.git
+#
+#             for file in $files; do
+#               mv $base_url/$file /etcd/$file
+#             done
+#         volumeMounts:
+#         - name: pvc-volume
+#           mountPath: /etcd
+#       restartPolicy: OnFailure
+#       volumes:
+#       - name: pvc-volume
+#         persistentVolumeClaim:
+#           claimName: etcd-pvc

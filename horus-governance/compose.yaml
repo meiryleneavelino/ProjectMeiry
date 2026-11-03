@@ -1,0 +1,60 @@
+name: horus-governance
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    image: horus-governance:local
+    container_name: horus-governance-api
+    user: "${HORUS_UID:-1000}:${HORUS_GID:-1000}"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777"]
+    mem_limit: 384m
+    pids_limit: 128
+    ports: ["127.0.0.1:8097:8097"]
+    environment:
+      HORUS_STATE_ROOT: /state
+      HORUS_SETTINGS: /app/config/settings.example.json
+      HORUS_TRAINING_URL: http://host.docker.internal:8096/api/v1/ml
+      HORUS_TRAINING_TOKEN_FILE: /run/secrets/training-token
+    volumes:
+      - ./.local:/state
+      - ./config/settings.example.json:/app/config/settings.example.json:ro
+      - type: bind
+        source: ../configuration/federated-training/.local/api-token
+        target: /run/secrets/training-token
+        read_only: true
+        bind:
+          create_host_path: false
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8097/health',timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 12
+  worker:
+    image: horus-governance:local
+    pull_policy: never
+    container_name: horus-governance-worker
+    user: "${HORUS_UID:-1000}:${HORUS_GID:-1000}"
+    group_add: ["${HORUS_DOCKER_GID:-0}"]
+    command: [python, -m, app.worker]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777"]
+    mem_limit: 256m
+    pids_limit: 64
+    stop_grace_period: 150s
+    environment:
+      HORUS_STATE_ROOT: /state
+      DOCKER_BIN: /usr/local/bin/docker
+    volumes:
+      - ./.local:/state
+      - ./config/settings.example.json:/app/config/settings.example.json:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      api:
+        condition: service_healthy

@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package dynamos;
+
+option go_package = "github.com/Jorrit05/DYNAMOS/pkg/proto";
+import "google/protobuf/empty.proto";
+
+// The sidecar definition.
+service Generic {
+    rpc InitTracer(ServiceName) returns (google.protobuf.Empty) {}
+  }
+
+message RequestMetadata {
+    string correlation_id = 1;
+    string destination_queue = 2;
+    string job_name = 3;
+    string return_address = 4;
+    string job_id = 5;
+}
+
+message ServiceName {
+    string service_name = 1;
+}

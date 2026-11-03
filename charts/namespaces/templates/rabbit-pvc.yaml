@@ -1,0 +1,39 @@
+# Define Persistent Volume (PV) explicitely on the node, otherwise, the PVC cannot find it.
+# This did work without PV on the local setup, but for the FABRIC this was required.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rabbit-pv
+spec:
+  capacity:
+    storage: 20Mi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    # local path on node
+    path: "/mnt/rabbit-data"
+  persistentVolumeReclaimPolicy: Retain
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values:
+                - {{ .Values.node }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbit-pvc
+  namespace: core
+  annotations:
+    "linkerd.io/inject": disabled
+spec:
+  # binds to the PV above
+  volumeName: rabbit-pv
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 20Mi

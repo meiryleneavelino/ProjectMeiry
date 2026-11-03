@@ -1,0 +1,359 @@
+{{- $root := . }}
+{{- range $namespace := append .Values.organizations "training-system" }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $namespace }}
+  labels:
+    dynamos-training: "true"
+    pod-security.kubernetes.io/enforce: restricted
+  annotations:
+    linkerd.io/inject: disabled
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: training-auth
+  namespace: {{ $namespace }}
+type: Opaque
+stringData:
+  api-token: {{ required "Set apiToken using a local secret file" $root.Values.apiToken | quote }}
+  signing-key: {{ $root.Values.integrated.signingKey | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: training-state
+  namespace: {{ $namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 64Mi
+{{- end }}
+{{- range $namespace := .Values.organizations }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: training-data
+  namespace: {{ $namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 64Mi
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: training-agent
+  namespace: {{ $namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: training-agent
+  namespace: {{ $namespace }}
+rules:
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, get, list, delete]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create, get, update, patch, delete]
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbit
+  namespace: {{ $namespace }}
+type: Opaque
+stringData:
+  password: {{ $root.Values.integrated.rabbitPassword | quote }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: training-agent
+  namespace: {{ $namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: training-agent
+subjects:
+  - kind: ServiceAccount
+    name: training-agent
+    namespace: {{ $namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: training-seed
+  namespace: {{ $namespace }}
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 180
+  template:
+    metadata:
+      labels:
+        app: federated-training
+        role: worker
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: seed
+          image: {{ $root.Values.image | quote }}
+          imagePullPolicy: IfNotPresent
+          args: [seed]
+          env:
+            - name: ORGANIZATION
+              value: {{ upper $namespace }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: dataset
+              mountPath: /data
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: dataset
+          persistentVolumeClaim:
+            claimName: training-data
+        - name: temporary
+          emptyDir:
+            sizeLimit: 32Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: training-agent
+  namespace: {{ $namespace }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: federated-training
+      role: agent
+  template:
+    metadata:
+      labels:
+        app: federated-training
+        role: agent
+    spec:
+      serviceAccountName: training-agent
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: agent
+          image: {{ if $root.Values.integrated.enabled }}{{ $root.Values.integrated.image | quote }}{{ else }}{{ $root.Values.image | quote }}{{ end }}
+          imagePullPolicy: IfNotPresent
+          {{- if $root.Values.integrated.enabled }}
+          command: [/app/agent]
+          {{- end }}
+          env:
+            - name: ROLE
+              value: agent
+            - name: ORGANIZATION
+              value: {{ upper $namespace }}
+            - name: TRAINER_IMAGE
+              value: {{ $root.Values.image | quote }}
+            - name: DATA_STEWARD_NAME
+              value: {{ upper $namespace }}
+            - name: TRAINING_ENABLED
+              value: {{ $root.Values.integrated.enabled | quote }}
+            - name: TRAINING_SIDECAR_IMAGE
+              value: {{ $root.Values.integrated.image | quote }}
+            - name: OC_AGENT_HOST
+              value: collector.core.svc.cluster.local:55678
+            - name: TRAINING_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: training-auth
+                  key: signing-key
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: training-auth
+                  key: api-token
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            - name: temporary
+              mountPath: /tmp
+        {{- if $root.Values.integrated.enabled }}
+        {{- include "training.sidecar" $root | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: training-state
+        - name: temporary
+          emptyDir:
+            sizeLimit: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: training-agent
+  namespace: {{ $namespace }}
+spec:
+  selector:
+    app: federated-training
+    role: agent
+  ports:
+    - port: 8080
+      targetPort: 8080
+{{- if $root.Values.integrated.enabled }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $namespace }}
+  namespace: {{ $namespace }}
+spec:
+  selector:
+    app: federated-training
+    role: agent
+  ports:
+    - port: 8080
+      targetPort: 8080
+{{- end }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: training-coordinator
+  namespace: training-system
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: federated-training
+      role: coordinator
+  template:
+    metadata:
+      labels:
+        app: federated-training
+        role: coordinator
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: coordinator
+          image: {{ .Values.image | quote }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: ROLE
+              value: coordinator
+            - name: NETWORK_VERIFIED
+              value: {{ .Values.networkVerified | quote }}
+            - name: DYNAMOS_INTEGRATED
+              value: {{ .Values.integrated.enabled | quote }}
+            - name: DYNAMOS_GATEWAY_URL
+              value: http://api-gateway.training-system.svc.cluster.local:8080
+            - name: TRAINING_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: training-auth
+                  key: signing-key
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: training-auth
+                  key: api-token
+          ports:
+            - containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: state
+              mountPath: /state
+            - name: temporary
+              mountPath: /tmp
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: training-state
+        - name: temporary
+          emptyDir:
+            sizeLimit: 32Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: training-coordinator
+  namespace: training-system
+spec:
+  selector:
+    app: federated-training
+    role: coordinator
+  ports:
+    - port: 8080
+      targetPort: 8080

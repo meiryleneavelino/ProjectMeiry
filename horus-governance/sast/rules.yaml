@@ -1,0 +1,147 @@
+{
+  "rules": [
+    {
+      "id": "horus.dynamic-code",
+      "languages": ["python"],
+      "severity": "ERROR",
+      "metadata": {"horus_severity": "high"},
+      "message": "Dynamic evaluation or compilation is not permitted.",
+      "pattern-either": [
+        {"pattern": "eval(...)"},
+        {"pattern": "exec(...)"},
+        {"pattern": "compile(...)"},
+        {"pattern": "builtins.eval(...)"},
+        {"pattern": "builtins.exec(...)"},
+        {"pattern": "builtins.compile(...)"}
+      ]
+    },
+    {
+      "id": "horus.pickle-deserialization",
+      "languages": ["python"],
+      "severity": "ERROR",
+      "metadata": {"horus_severity": "high"},
+      "message": "Pickle deserialization of submitted data is not permitted.",
+      "pattern-either": [
+        {"pattern": "pickle.load(...)"},
+        {"pattern": "pickle.loads(...)"}
+      ]
+    },
+    {
+      "id": "horus.unsafe-yaml",
+      "languages": ["python"],
+      "severity": "ERROR",
+      "metadata": {"horus_severity": "high"},
+      "message": "YAML loading must use safe_load or an explicitly safe loader.",
+      "pattern-either": [
+        {
+          "patterns": [
+            {"pattern": "yaml.load(...)"},
+            {"pattern-not": "yaml.load(..., Loader=yaml.SafeLoader, ...)"},
+            {"pattern-not": "yaml.load(..., Loader=yaml.CSafeLoader, ...)"},
+            {"pattern-not": "yaml.load($DATA, yaml.SafeLoader)"},
+            {"pattern-not": "yaml.load($DATA, yaml.CSafeLoader)"}
+          ]
+        },
+        {"pattern": "yaml.unsafe_load(...)"},
+        {"pattern": "yaml.full_load(...)"}
+      ]
+    },
+    {
+      "id": "horus.process-execution",
+      "languages": ["python"],
+      "severity": "ERROR",
+      "metadata": {"horus_severity": "high"},
+      "message": "Launching commands or child processes is not permitted.",
+      "pattern-either": [
+        {"pattern": "subprocess.$FUNCTION(...)"},
+        {
+          "patterns": [
+            {"pattern": "os.$FUNCTION(...)"},
+            {"metavariable-regex": {"metavariable": "$FUNCTION", "regex": "^(system|popen|exec[a-z]*|spawn[a-z]*|fork|forkpty)$"}}
+          ]
+        }
+      ]
+    },
+    {
+      "id": "horus.network-import",
+      "languages": ["python"],
+      "severity": "WARNING",
+      "metadata": {"horus_severity": "medium"},
+      "message": "Network-capable imports require removal before sandbox execution.",
+      "patterns": [
+        {"pattern-either": [
+          {"pattern": "import $MODULE"},
+          {"pattern": "import $MODULE as $ALIAS"},
+          {"pattern": "from $MODULE import $...NAMES"}
+        ]},
+        {"metavariable-regex": {"metavariable": "$MODULE", "regex": "^(socket|requests|urllib|http|httpx|aiohttp)(\\.|$)"}}
+      ]
+    },
+    {
+      "id": "horus.file-write-path",
+      "languages": ["python"],
+      "severity": "ERROR",
+      "metadata": {"horus_severity": "high"},
+      "message": "File writes require a static absolute path under /tmp without traversal.",
+      "patterns": [
+        {"pattern-either": [
+          {"patterns": [
+            {"pattern-either": [
+              {"pattern": "open($PATH, $MODE, ...)"},
+              {"pattern": "open($PATH, mode=$MODE, ...)"},
+              {"pattern": "io.open($PATH, $MODE, ...)"},
+              {"pattern": "io.open($PATH, mode=$MODE, ...)"},
+              {"pattern": "pathlib.Path($PATH).open($MODE, ...)"},
+              {"pattern": "pathlib.Path($PATH).open(mode=$MODE, ...)"}
+            ]},
+            {"metavariable-regex": {"metavariable": "$MODE", "regex": "(?s)^(?:.*[wax+].*|[^\"']+)$"}}
+          ]},
+          {"pattern": "os.open($PATH, ...)"},
+          {"pattern": "pathlib.Path($PATH).write_text(...)"},
+          {"pattern": "pathlib.Path($PATH).write_bytes(...)"}
+        ]},
+        {"metavariable-regex": {"metavariable": "$PATH", "regex": "(?s)^(?![\"']/tmp/(?!.*(?:\\.\\.|\\\\))[^\"']+[\"']$).*"}}
+      ]
+    },
+    {
+      "id": "horus.unresolved-file-write",
+      "languages": ["python"],
+      "severity": "ERROR",
+      "metadata": {"horus_severity": "high"},
+      "message": "The file destination cannot be proven to remain under /tmp.",
+      "patterns": [
+        {"pattern-either": [
+          {"pattern": "$TARGET.write_text(...)"},
+          {"pattern": "$TARGET.write_bytes(...)"},
+          {"pattern": "os.write(...)"},
+          {"patterns": [
+            {"pattern-either": [
+              {"pattern": "$TARGET.open($MODE, ...)"},
+              {"pattern": "$TARGET.open(mode=$MODE, ...)"}
+            ]},
+            {"metavariable-regex": {"metavariable": "$MODE", "regex": "(?s)^(?:.*[wax+].*|[^\"']+)$"}}
+          ]}
+        ]},
+        {"pattern-not": "pathlib.Path($PATH).write_text(...)"},
+        {"pattern-not": "pathlib.Path($PATH).write_bytes(...)"},
+        {"pattern-not": "pathlib.Path($PATH).open(...)"}
+      ]
+    },
+    {
+      "id": "horus.hardcoded-secret",
+      "languages": ["python"],
+      "severity": "ERROR",
+      "metadata": {"horus_severity": "high"},
+      "message": "A credential-like field contains a hardcoded value; the value is redacted.",
+      "patterns": [
+        {"pattern-either": [
+          {"pattern": "$NAME = $VALUE"},
+          {"pattern": "$CONFIG[$NAME] = $VALUE"},
+          {"pattern": "{$NAME: $VALUE, ...}"}
+        ]},
+        {"metavariable-regex": {"metavariable": "$NAME", "regex": "(?i).*(token|password|passwd|secret|api_?key|access_?key|credential|authorization).*"}},
+        {"metavariable-regex": {"metavariable": "$VALUE", "regex": "(?s)^[\"'].+[\"']$"}}
+      ]
+    }
+  ]
+}

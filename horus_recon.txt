@@ -1,0 +1,1033 @@
+Pasta analisada: /Users/meiryleneavelino/Desktop/TUDelft/desenvolvimento/DYNAMOS_TUDelft_Test/Scattered-Directive
+
+
+===== RAIZ (2 níveis) =====
+.
+.devcontainer
+.devcontainer/Dockerfile
+.devcontainer/devcontainer.json
+.gitattributes
+.github
+.github/dependabot.yml
+.gitignore
+LICENSE
+ThirdPartyNotices
+VFL_baseline_offline.py
+VFL_test_v2.py
+charts
+charts/agents
+charts/api-gateway
+charts/core
+charts/data-values.yaml
+charts/federated-training
+charts/namespaces
+charts/orchestrator
+charts/test
+charts/thirdparty
+configuration
+configuration/argo
+configuration/datasets
+configuration/dynamos-configuration.sh
+configuration/etcd_files.tar.gz
+configuration/etcd_launch_files
+configuration/federated-training
+configuration/fill-rabbit-pvc.sh
+configuration/grafana
+configuration/k8s_service_files
+configuration/temp-pod.yaml
+dev.sh
+docs
+docs/arquitetura-atual.md
+docs/development_guide
+docs/diagrams
+docs/helpers
+docs/horus-federated-training.md
+docs/images
+docs/misc
+docs/papers
+docs/passo-a-passo-observar-treinamento.md
+docs/slides
+extremexp_accesscontrol
+extremexp_accesscontrol/.DS_Store
+extremexp_accesscontrol/.docker
+extremexp_accesscontrol/.env.example
+extremexp_accesscontrol/.github
+extremexp_accesscontrol/.gitignore
+extremexp_accesscontrol/Dockerfile
+extremexp_accesscontrol/LICENSE.md
+extremexp_accesscontrol/Makefile
+extremexp_accesscontrol/README.md
+extremexp_accesscontrol/api
+extremexp_accesscontrol/app.py
+extremexp_accesscontrol/blockchain_interface
+extremexp_accesscontrol/bootstrap.sh
+extremexp_accesscontrol/cli.py
+extremexp_accesscontrol/contracts
+extremexp_accesscontrol/docker-compose.yaml
+extremexp_accesscontrol/docs
+extremexp_accesscontrol/generate_docs.sh
+extremexp_accesscontrol/index.html
+extremexp_accesscontrol/install.sh
+extremexp_accesscontrol/keycloak_interface
+extremexp_accesscontrol/models
+extremexp_accesscontrol/orgs
+extremexp_accesscontrol/parser
+extremexp_accesscontrol/person
+extremexp_accesscontrol/policy_builder
+extremexp_accesscontrol/requirements.txt
+extremexp_accesscontrol/resource
+extremexp_accesscontrol/run.sh
+extremexp_accesscontrol/structure_builder
+fabric
+fabric/.gitignore
+fabric/kubespray
+fabric/node_scripts
+fabric/scenario_1.json
+fabric/scenario_2.json
+fabric/scenario_3.json
+fabric/scenario_4.json
+fabric/setup_guides
+fabric_steps_log.txt
+go
+go/Dockerfile
+go/Makefile
+go/cmd
+go/go.mod
+go/go.sum
+go/pkg
+go/tag.sh
+horus-sandbox-frontend
+horus-sandbox-frontend/.gitignore
+horus-sandbox-frontend/README.md
+horus-sandbox-frontend/index.html
+horus-sandbox-frontend/package-lock.json
+horus-sandbox-frontend/package.json
+horus-sandbox-frontend/postcss.config.js
+horus-sandbox-frontend/src
+horus-sandbox-frontend/tailwind.config.js
+horus-sandbox-frontend/tsconfig.app.json
+horus-sandbox-frontend/tsconfig.app.tsbuildinfo
+horus-sandbox-frontend/tsconfig.json
+horus-sandbox-frontend/tsconfig.node.json
+horus-sandbox-frontend/tsconfig.node.tsbuildinfo
+horus-sandbox-frontend/vite.config.ts
+horus_recon.txt
+house_energy_consumption
+house_energy_consumption/VFL_base.py
+house_energy_consumption/animated_clients.py
+house_energy_consumption/animation.py
+house_energy_consumption/column_categories.json
+house_energy_consumption/data_split.py
+house_energy_consumption/plot_script_online.py
+plot_script.py
+proto-files
+proto-files/etcd.proto
+proto-files/generic.proto
+proto-files/health.proto
+proto-files/microserviceCommunication.proto
+proto-files/rabbitMQ.proto
+python
+python/.gitignore
+python/Dockerfile
+python/Makefile
+python/__init__.py
+python/dynamos-python-lib
+python/federated-training
+python/sql-query
+python/vfl-data
+python/vfl-run
+python/vfl-train
+python/vfl-train-demo
+python/vfl-train-model
+python/vfl-train-model-demo
+readme.MD
+scripts
+scripts/add_agent.sh
+scripts/add_namespace.sh
+scripts/add_thirdparty.sh
+scripts/collect_metrics.sh
+scripts/csv_splitter.py
+scripts/csv_splitter_configuration.json
+scripts/pdf_extractor.py
+scripts/rename-dockerhub.sh
+scripts/retrieve_data.sh
+scripts/retrieve_logs_policy.sh
+scripts/slides_demo_movie.pdf
+web
+web/.gitignore
+web/README.md
+web/env.d.ts
+web/index.html
+web/package-lock.json
+web/package.json
+web/public
+web/src
+web/tsconfig.config.json
+web/tsconfig.json
+web/vite.config.ts
+
+
+===== horus-sandbox-frontend (5 níveis) =====
+horus-sandbox-frontend
+horus-sandbox-frontend/.gitignore
+horus-sandbox-frontend/README.md
+horus-sandbox-frontend/index.html
+horus-sandbox-frontend/package-lock.json
+horus-sandbox-frontend/package.json
+horus-sandbox-frontend/postcss.config.js
+horus-sandbox-frontend/src
+horus-sandbox-frontend/src/App.tsx
+horus-sandbox-frontend/src/components
+horus-sandbox-frontend/src/components/AuthorizationsPanel.tsx
+horus-sandbox-frontend/src/components/JobsTable.tsx
+horus-sandbox-frontend/src/components/LedgerTimeline.tsx
+horus-sandbox-frontend/src/components/PageStub.tsx
+horus-sandbox-frontend/src/components/Panel.tsx
+horus-sandbox-frontend/src/components/SandboxStatusPanel.tsx
+horus-sandbox-frontend/src/components/Sidebar.tsx
+horus-sandbox-frontend/src/components/StatCard.tsx
+horus-sandbox-frontend/src/components/Topbar.tsx
+horus-sandbox-frontend/src/components/charts
+horus-sandbox-frontend/src/components/charts/ModelDistributionChart.tsx
+horus-sandbox-frontend/src/components/charts/UsageChart.tsx
+horus-sandbox-frontend/src/data
+horus-sandbox-frontend/src/data/mock.ts
+horus-sandbox-frontend/src/main.tsx
+horus-sandbox-frontend/src/pages
+horus-sandbox-frontend/src/pages/Authorizations.tsx
+horus-sandbox-frontend/src/pages/Dashboard.tsx
+horus-sandbox-frontend/src/pages/Datasets.tsx
+horus-sandbox-frontend/src/pages/FederatedTraining.tsx
+horus-sandbox-frontend/src/pages/Jobs.tsx
+horus-sandbox-frontend/src/pages/Ledger.tsx
+horus-sandbox-frontend/src/pages/Models.tsx
+horus-sandbox-frontend/src/pages/NewJob.tsx
+horus-sandbox-frontend/src/pages/Reports.tsx
+horus-sandbox-frontend/src/pages/Security.tsx
+horus-sandbox-frontend/src/pages/Settings.tsx
+horus-sandbox-frontend/src/styles
+horus-sandbox-frontend/src/styles/index.css
+horus-sandbox-frontend/src/types
+horus-sandbox-frontend/src/types/index.ts
+horus-sandbox-frontend/tailwind.config.js
+horus-sandbox-frontend/tsconfig.app.json
+horus-sandbox-frontend/tsconfig.app.tsbuildinfo
+horus-sandbox-frontend/tsconfig.json
+horus-sandbox-frontend/tsconfig.node.json
+horus-sandbox-frontend/tsconfig.node.tsbuildinfo
+horus-sandbox-frontend/vite.config.ts
+
+
+===== extremexp_accesscontrol (4 níveis) =====
+extremexp_accesscontrol
+extremexp_accesscontrol/.DS_Store
+extremexp_accesscontrol/.docker
+extremexp_accesscontrol/.docker/entrypoint.sh
+extremexp_accesscontrol/.env.example
+extremexp_accesscontrol/.github
+extremexp_accesscontrol/.github/workflows
+extremexp_accesscontrol/.github/workflows/cd-dev.yaml
+extremexp_accesscontrol/.github/workflows/cd-prod.yaml
+extremexp_accesscontrol/.github/workflows/ci.yaml
+extremexp_accesscontrol/.gitignore
+extremexp_accesscontrol/Dockerfile
+extremexp_accesscontrol/LICENSE.md
+extremexp_accesscontrol/Makefile
+extremexp_accesscontrol/README.md
+extremexp_accesscontrol/api
+extremexp_accesscontrol/api/__init__.py
+extremexp_accesscontrol/api/api.py
+extremexp_accesscontrol/api/settings.py
+extremexp_accesscontrol/app.py
+extremexp_accesscontrol/blockchain_interface
+extremexp_accesscontrol/blockchain_interface/__init__.py
+extremexp_accesscontrol/blockchain_interface/deployer.py
+extremexp_accesscontrol/blockchain_interface/errors.py
+extremexp_accesscontrol/blockchain_interface/helpers
+extremexp_accesscontrol/blockchain_interface/helpers/__init__.py
+extremexp_accesscontrol/blockchain_interface/helpers/testing.py
+extremexp_accesscontrol/blockchain_interface/helpers/utils.py
+extremexp_accesscontrol/blockchain_interface/interfaces
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PAP.py
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PDP.py
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PIP.py
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/SmartContract.py
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py
+extremexp_accesscontrol/blockchain_interface/interfaces/HyperledgerBesu.py
+extremexp_accesscontrol/blockchain_interface/interfaces/__init__.py
+extremexp_accesscontrol/blockchain_interface/user.py
+extremexp_accesscontrol/bootstrap.sh
+extremexp_accesscontrol/cli.py
+extremexp_accesscontrol/contracts
+extremexp_accesscontrol/contracts/KeycloakLogs.sol
+extremexp_accesscontrol/contracts/PAP.sol
+extremexp_accesscontrol/contracts/PDP.sol
+extremexp_accesscontrol/contracts/PIP.sol
+extremexp_accesscontrol/contracts/README.md
+extremexp_accesscontrol/contracts/SamplePolicy.json
+extremexp_accesscontrol/contracts/SamplePolicy.sol
+extremexp_accesscontrol/contracts/SamplePolicy2.json
+extremexp_accesscontrol/contracts/SamplePolicy3.json
+extremexp_accesscontrol/contracts/interfaces
+extremexp_accesscontrol/contracts/interfaces/AccessControlPolicy.sol
+extremexp_accesscontrol/docker-compose.yaml
+extremexp_accesscontrol/docs
+extremexp_accesscontrol/docs/README.md
+extremexp_accesscontrol/docs/swagger
+extremexp_accesscontrol/docs/swagger.json
+extremexp_accesscontrol/docs/swagger/index.css
+extremexp_accesscontrol/docs/swagger/index.html
+extremexp_accesscontrol/docs/swagger/oauth2-redirect.html
+extremexp_accesscontrol/docs/swagger/oauth2-redirect.js
+extremexp_accesscontrol/docs/swagger/swagger-initializer.js
+extremexp_accesscontrol/docs/swagger/swagger-ui-bundle.js
+extremexp_accesscontrol/docs/swagger/swagger-ui-es-bundle-core.js
+extremexp_accesscontrol/docs/swagger/swagger-ui-es-bundle.js
+extremexp_accesscontrol/docs/swagger/swagger-ui-standalone-preset.js
+extremexp_accesscontrol/docs/swagger/swagger-ui.css
+extremexp_accesscontrol/docs/swagger/swagger-ui.js
+extremexp_accesscontrol/docs/swagger/swagger.json
+extremexp_accesscontrol/generate_docs.sh
+extremexp_accesscontrol/index.html
+extremexp_accesscontrol/install.sh
+extremexp_accesscontrol/keycloak_interface
+extremexp_accesscontrol/keycloak_interface/__init__.py
+extremexp_accesscontrol/keycloak_interface/errors.py
+extremexp_accesscontrol/keycloak_interface/keycloakInterface.py
+extremexp_accesscontrol/keycloak_interface/utils
+extremexp_accesscontrol/keycloak_interface/utils/__init__.py
+extremexp_accesscontrol/keycloak_interface/utils/functions.py
+extremexp_accesscontrol/keycloak_interface/utils/handlers.py
+extremexp_accesscontrol/models
+extremexp_accesscontrol/models/__init__.py
+extremexp_accesscontrol/models/models.py
+extremexp_accesscontrol/orgs
+extremexp_accesscontrol/orgs/__init__.py
+extremexp_accesscontrol/orgs/views.py
+extremexp_accesscontrol/parser
+extremexp_accesscontrol/parser/examples
+extremexp_accesscontrol/parser/examples/xacml_policy.xacml
+extremexp_accesscontrol/parser/examples/xacml_policy2.xacml
+extremexp_accesscontrol/parser/examples/xacml_policy3.xacml
+extremexp_accesscontrol/parser/examples/xacml_policy4.xacml
+extremexp_accesscontrol/parser/examples/xacml_policy5.xacml
+extremexp_accesscontrol/parser/parser.py
+extremexp_accesscontrol/parser/processed_policies
+extremexp_accesscontrol/parser/processed_policies/processed_xacml_policy.json
+extremexp_accesscontrol/parser/processed_policies/processed_xacml_policy2.json
+extremexp_accesscontrol/parser/processed_policies/processed_xacml_policy3.json
+extremexp_accesscontrol/parser/processed_policies/processed_xacml_policy4.json
+extremexp_accesscontrol/parser/processed_policies/processed_xacml_policy5.json
+extremexp_accesscontrol/person
+extremexp_accesscontrol/person/__init__.py
+extremexp_accesscontrol/person/views.py
+extremexp_accesscontrol/policy_builder
+extremexp_accesscontrol/policy_builder/__init__.py
+extremexp_accesscontrol/policy_builder/policy_builder.py
+extremexp_accesscontrol/requirements.txt
+extremexp_accesscontrol/resource
+extremexp_accesscontrol/resource/__init__.py
+extremexp_accesscontrol/resource/views.py
+extremexp_accesscontrol/run.sh
+extremexp_accesscontrol/structure_builder
+extremexp_accesscontrol/structure_builder/__init__.py
+extremexp_accesscontrol/structure_builder/structure_builder.py
+
+
+===== ARQUIVOS-CHAVE DO FRONTEND =====
+
+--- horus-sandbox-frontend/package.json ---
+{
+  "name": "horus-sandbox-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "lucide-react": "^0.445.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.5",
+    "@types/react": "^18.3.5",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.45",
+    "tailwindcss": "^3.4.10",
+    "typescript": "^5.5.4",
+    "vite": "^5.4.5"
+  }
+}
+
+--- horus-sandbox-frontend/vite.config.ts ---
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { readFileSync } from "node:fs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+export default defineConfig({
+  plugins: [react()],
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "src"),
+    },
+  },
+  server: {
+    port: 5175,
+    host: "127.0.0.1",
+    proxy: {
+      "/training-api": {
+        target: "http://127.0.0.1:8096",
+        changeOrigin: true,
+        rewrite: (url) => url.replace(/^\/training-api/, "/api/v1/ml"),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (request) => {
+            try {
+              const access = JSON.parse(readFileSync(path.resolve(__dirname,
+                "../configuration/federated-training/.local/access.json"), "utf8"));
+              request.setHeader("Authorization", `Bearer ${access.token}`);
+            } catch {
+              request.removeHeader("Authorization");
+            }
+          });
+        },
+      },
+    },
+  },
+});
+
+--- horus-sandbox-frontend/tsconfig.json ---
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ]
+}
+
+--- horus-sandbox-frontend/src/App.tsx ---
+import { Routes, Route } from "react-router-dom";
+import Sidebar from "@/components/Sidebar";
+import Topbar from "@/components/Topbar";
+import Dashboard from "@/pages/Dashboard";
+import NewJob from "@/pages/NewJob";
+import Jobs from "@/pages/Jobs";
+import Authorizations from "@/pages/Authorizations";
+import Ledger from "@/pages/Ledger";
+import Models from "@/pages/Models";
+import Datasets from "@/pages/Datasets";
+import Security from "@/pages/Security";
+import Reports from "@/pages/Reports";
+import Settings from "@/pages/Settings";
+import FederatedTraining from "@/pages/FederatedTraining";
+
+export default function App() {
+  return (
+    <div className="grid min-h-screen grid-cols-1 md:grid-cols-[250px_1fr]">
+      <Sidebar />
+      <div className="min-w-0">
+        <Topbar
+          title="Federated Learning Sandbox"
+          subtitle="Governed Federated Blind TRE"
+        />
+        <main className="mx-auto max-w-[1400px] px-4 pb-16 pt-6 md:px-7">
+          <Routes>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/new-job" element={<NewJob />} />
+            <Route path="/training" element={<FederatedTraining />} />
+            <Route path="/jobs" element={<Jobs />} />
+            <Route path="/authorizations" element={<Authorizations />} />
+            <Route path="/ledger" element={<Ledger />} />
+            <Route path="/models" element={<Models />} />
+            <Route path="/data" element={<Datasets />} />
+            <Route path="/security" element={<Security />} />
+            <Route path="/reports" element={<Reports />} />
+            <Route path="/settings" element={<Settings />} />
+          </Routes>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+--- horus-sandbox-frontend/src/main.tsx ---
+import React from "react";
+import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import App from "./App";
+import "./styles/index.css";
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </React.StrictMode>
+);
+
+
+===== ROTAS E CHAMADAS DE API NO FRONTEND =====
+horus-sandbox-frontend/src/App.tsx:26:          <Routes>
+horus-sandbox-frontend/src/App.tsx:27:            <Route path="/" element={<Dashboard />} />
+horus-sandbox-frontend/src/App.tsx:28:            <Route path="/new-job" element={<NewJob />} />
+horus-sandbox-frontend/src/App.tsx:29:            <Route path="/training" element={<FederatedTraining />} />
+horus-sandbox-frontend/src/App.tsx:30:            <Route path="/jobs" element={<Jobs />} />
+horus-sandbox-frontend/src/App.tsx:31:            <Route path="/authorizations" element={<Authorizations />} />
+horus-sandbox-frontend/src/App.tsx:32:            <Route path="/ledger" element={<Ledger />} />
+horus-sandbox-frontend/src/App.tsx:33:            <Route path="/models" element={<Models />} />
+horus-sandbox-frontend/src/App.tsx:34:            <Route path="/data" element={<Datasets />} />
+horus-sandbox-frontend/src/App.tsx:35:            <Route path="/security" element={<Security />} />
+horus-sandbox-frontend/src/App.tsx:36:            <Route path="/reports" element={<Reports />} />
+horus-sandbox-frontend/src/App.tsx:37:            <Route path="/settings" element={<Settings />} />
+horus-sandbox-frontend/src/data/mock.ts:15://     const res = await fetch("/api/jobs");
+horus-sandbox-frontend/src/pages/FederatedTraining.tsx:29:async function api<Result>(path: string, payload?: object): Promise<Result> {
+horus-sandbox-frontend/src/pages/FederatedTraining.tsx:30:  const response = await fetch(`/training-api${path}`, {
+horus-sandbox-frontend/src/pages/FederatedTraining.tsx:130:      const response = await fetch(`/training-api/runs/${run.id}/model`, { signal: AbortSignal.timeout(10000) });
+
+
+===== ARQUIVOS COM DADOS FIXOS (mocks) =====
+horus-sandbox-frontend/src/data/mock.ts
+horus-sandbox-frontend/src/pages/FederatedTraining.tsx
+horus-sandbox-frontend/src/pages/Ledger.tsx
+
+
+===== ARQUIVOS-CHAVE DO EXTREMEXP =====
+
+--- extremexp_accesscontrol/README.md ---
+# ExtremeXP Policy Access Control
+![ExtremeXP](https://img.shields.io/badge/ExtremeXP-121011?style=for-the-badge&logo=extremexp&logoColor=black)
+![Python](https://img.shields.io/badge/python-121011?style=for-the-badge&logo=python&logoColor=ffdd54)
+![Flask](https://img.shields.io/badge/flask-%23121011.svg?style=for-the-badge&logo=flask&logoColor=white)
+![Web3](https://img.shields.io/badge/web3-121011?style=for-the-badge&logo=web3.js&logoColor=white)
+![Solidity](https://img.shields.io/badge/Solidity-%23121011.svg?style=for-the-badge&logo=solidity&logoColor=white)
+![Hyperledger](https://img.shields.io/badge/hyperledger-121011?style=for-the-badge&logo=hyperledger&logoColor=white)
+![Docker](https://img.shields.io/badge/docker-121011?style=for-the-badge&logo=docker&logoColor=white)
+![Metamask](https://img.shields.io/badge/metamask-121011?style=for-the-badge&logo=metamask&logoColor=white)
+![GitHub](https://img.shields.io/badge/github-%23121011.svg?style=for-the-badge&logo=github&logoColor=white)
+
+This project provides an interface for the ExtremeXP Access Control module,
+enabling the translation of XACML policies into Solidity smart contracts.
+The module's key responsibilities include:
+
+- Acting as the backend for the ExtremeXP security layer.  
+- Translating XACML policies into Solidity smart contracts.  
+- Deploying the generated smart contracts onto the blockchain.  
+
+> Note: The translator project is based on the [XACML](https://www.oasis-open.org/committees/xacml/) standard 
+and the [Solidity](https://soliditylang.org/) programming language.
+
+## Project Architecture
+
+![Project Architecture](./docs/ExtremeXP-Translator.png "Project Architecture")
+
+
+## Getting Started
+```bash
+# install the project development environment
+make install
+# run the project
+make run
+```
+The server will be running on http://localhost:5521.
+The Swagger documentation is available on the root page.
+
+
+## System Features
+
+#### Implemented in this release:
+- [x] Project Basic Structure (Flask API + Endpoints + kickoff script)
+- [x] XACML/JSON to Specific Use Cases Policies
+- [x] Register the Policy address to a database (Policy Address DB managed by PAP Smart Contract)
+- [x] Integrate with the Keycloak Authorisation Server (OAuth or MetaMask)
+- [x] Integrate with the [ExtremeXP Portal](https://github.com/extremexp-HORIZON/extremexp-portal)
+- [x] Add the Smart Contracts used for the ABAC module in the project for documentation purposes
+
+#### Future development:
+- [ ] Automated translation of arbitrary XACML policies into Solidity Smart Contracts.
+
+
+### Tests:
+Before running the tests, ensure your `.env` file is updated with all required environment variables.
+It is essential that the blockchain network is up and running, and that your `.env` file contains the correct values
+for the blockchain RPC address and the manager private key, specified as `BLOCKCHAIN_PRIVATE_KEY`.
+
+```bash
+# setup the test environment
+make setup
+
+# load local venv
+source .venv/bin/activate
+
+### UPDATE THE .env FILE WITH THE FOLLOWING VARIABLES ###
+
+# create the account used for testing
+python3 cli.py --cc 
+
+# Copy the output private key and paste it in the .env file as TEST_USER_PRIVATE_KEY
+
+--- extremexp_accesscontrol/Makefile ---
+.PHONY: setup
+setup:
+	python3 -m venv .venv
+	. .venv/bin/activate && pip install --upgrade pip
+	. .venv/bin/activate && pip install -r requirements.txt
+
+.PHONY: install
+install:
+	bash install.sh
+
+.PHONY: run
+run:
+	bash run.sh
+
+.PHONY: run-docker
+run-docker:
+	docker-compose up --build
+
+.PHONY: bootstrap
+bootstrap:
+	bash bootstrap.sh
+
+.PHONY: generate-docs
+generate-docs:
+	@echo "Generating documentation..."
+	@bash generate_docs.sh
+
+.PHONY: update-swagger
+update-swagger:
+	@echo "Updating Swagger documentation..."
+	@cp docs/swagger.json docs/swagger/swagger.json
+
+.PHONY: destroy
+destroy:
+	rm -rf .venv
+	rm -rf __pycache__
+	rm -rf .pytest_cache
+	rm -rf .mypy_cache
+	rm -rf .coverage
+	rm .env
+
+
+--- extremexp_accesscontrol/requirements.txt ---
+aiofiles==24.1.0
+aiohappyeyeballs==2.4.4
+aiohttp==3.11.9
+aiosignal==1.3.1
+aniso8601==9.0.1
+annotated-types==0.7.0
+anyio==4.9.0
+asgiref==3.8.1
+astroid==3.3.9
+async-property==0.2.2
+async-timeout==5.0.1
+attrs==24.2.0
+Authlib==1.3.2
+bitarray==3.0.0
+blinker==1.8.2
+certifi==2024.8.30
+cffi==1.17.1
+charset-normalizer==3.4.0
+ckzg==2.0.1
+click==8.1.7
+cryptography==43.0.3
+cytoolz==1.0.0
+deprecation==2.1.0
+dill==0.3.9
+eth-account==0.13.7
+eth-hash==0.7.0
+eth-keyfile==0.8.1
+eth-keys==0.6.0
+eth-rlp==2.1.0
+eth-typing==5.0.1
+eth-utils==5.1.0
+eth_abi==5.1.0
+exceptiongroup==1.2.2
+Flask==3.0.3
+flask-cors==5.0.1
+flask-oidc==2.2.2
+flask-restx==1.3.0
+frozenlist==1.5.0
+h11==0.14.0
+hexbytes==1.2.1
+httpcore==1.0.7
+httpx==0.28.1
+idna==3.10
+importlib_resources==6.4.5
+isort==6.0.1
+itsdangerous==2.2.0
+Jinja2==3.1.4
+jsonschema==4.23.0
+jsonschema-specifications==2024.10.1
+jwcrypto==1.5.6
+MarkupSafe==3.0.2
+mccabe==0.7.0
+multidict==6.1.0
+packaging==23.2
+parsimonious==0.10.0
+pi==0.1.2
+platformdirs==4.3.7
+propcache==0.2.1
+py-solc-x==2.0.3
+pycparser==2.22
+pycryptodome==3.21.0
+pydantic==2.10.3
+pydantic_core==2.27.1
+pylint==3.3.6
+pylint-flask==0.6
+pylint-plugin-utils==0.8.2
+python-dotenv==1.0.1
+python-keycloak==5.3.1
+pytz==2024.2
+pyunormalize==16.0.0
+
+--- extremexp_accesscontrol/docker-compose.yaml ---
+services:
+  access-control-app:
+    build:
+        context: .
+    container_name: access-control-app
+    ports:
+      - ${FLASK_AC_APP_PORT}:${FLASK_AC_APP_PORT}
+    environment:
+      - FLASK_AC_APP_HOST=${FLASK_AC_APP_HOST}
+      - FLASK_AC_APP_PORT=${FLASK_AC_APP_PORT}
+      - FLASK_AC_APP_NAME=${FLASK_AC_APP_NAME}
+      - FLASK_AC_APP_DEBUG=${FLASK_AC_APP_DEBUG}
+      - FLASK_AC_APP_ENV=${FLASK_AC_APP_ENV}
+      - FLASK_AC_APP_SECRET_KEY=${FLASK_AC_APP_SECRET_KEY}
+      - FLASK_AC_APP_DATABASE_URI=${FLASK_AC_APP_DATABASE_URI}
+      - KEYCLOAK_SERVER_URL=${KEYCLOAK_SERVER_URL}
+      - OIDC_OP_AUTHORIZATION_ENDPOINT=${OIDC_OP_AUTHORIZATION_ENDPOINT}
+      - OIDC_OP_ENDSESSION_ENDPOINT=${OIDC_OP_ENDSESSION_ENDPOINT}
+      - OIDC_OP_JWKS_ENDPOINT=${OIDC_OP_JWKS_ENDPOINT}
+      - OIDC_OP_LOGOUT_ENDPOINT=${OIDC_OP_LOGOUT_ENDPOINT}
+      - OIDC_OP_LOGOUT_URL_METHOD=${OIDC_OP_LOGOUT_URL_METHOD}
+      - OIDC_OP_TOKEN_ENDPOINT=${OIDC_OP_TOKEN_ENDPOINT}
+      - OIDC_OP_USER_ENDPOINT=${OIDC_OP_USER_ENDPOINT}
+      - OIDC_RP_CLIENT_ID=${OIDC_RP_CLIENT_ID}
+      - OIDC_RP_REALM_ID=${OIDC_RP_REALM_ID}
+      - OIDC_RP_CLIENT_SECRET=${OIDC_RP_CLIENT_SECRET}
+      - OIDC_RP_SIGN_ALGO=${OIDC_RP_SIGN_ALGO}
+    command: python app.py
+    volumes:
+      - .:/app
+    networks:
+      - xp-network
+
+networks:
+  xp-network:
+    driver: bridge
+--- extremexp_accesscontrol/.env.example ---
+FLASK_AC_APP_HOST=localhost
+FLASK_AC_APP_PORT=5521
+FLASK_AC_APP_NAME=extreme_xp_translator_api
+FLASK_AC_APP_DEBUG=True
+FLASK_AC_APP_ENV=development
+FLASK_AC_APP_SECRET_KEY=your_secret_key
+FLASK_AC_APP_DATABASE_URI=sqlite:///db.sqlite3
+KEYCLOAK_SERVER_URL=http://localhost:8080/auth
+OIDC_OP_AUTHORIZATION_ENDPOINT=http://localhost:8080/auth/realms/your_realm_id/protocol/openid-connect/auth
+OIDC_OP_ENDSESSION_ENDPOINT=http://localhost:8080/auth/realms/your_realm_id/protocol/openid-connect/logout
+OIDC_OP_JWKS_ENDPOINT=http://localhost:8080/auth/realms/your_realm_id/protocol/openid-connect/certs
+OIDC_OP_LOGOUT_ENDPOINT=http://localhost:8080/auth/realms/your_realm_id/protocol/openid-connect/logout
+OIDC_OP_LOGOUT_URL_METHOD=oidc_logout
+OIDC_OP_TOKEN_ENDPOINT=http://localhost:8080/auth/realms/your_realm_id/protocol/openid-connect/token
+OIDC_OP_USER_ENDPOINT=http://localhost:8080/auth/realms/your_realm_id/protocol/openid-connect/userinfo
+OIDC_RP_CLIENT_ID=your_client_id
+OIDC_RP_REALM_ID=your_realm_id
+OIDC_RP_CLIENT_SECRET=your_client_secret_key
+OIDC_RP_SIGN_ALGO=RS256
+KEYCLOAK_USERNAME="admin_username"
+KEYCLOAK_USER_PASSWORD="admin_password"
+BLOCKCHAIN_RPC_URL=http://localhost:8555
+BLOCKCHAIN_PRIVATE_KEY=0x00000000000000000000000000000000000000000000000000000000000000000
+POLICY_INFORMATION_POINT_ADDRESS="0x000000000000000000000000000000000000000"
+POLICY_ADMINISTRATION_POINT_ADDRESS="0x000000000000000000000000000000000000000"
+POLICY_DECISION_POINT_ADDRESS="0x000000000000000000000000000000000000000"
+SAMPLE_POLICY_ADDRESS="0x000000000000000000000000000000000000000"
+TEST_USER_PRIVATE_KEY="0x000000000000000000000000000000000000000"
+--- extremexp_accesscontrol/app.py ---
+import os
+from api import app, settings
+from dotenv import load_dotenv
+
+load_dotenv()
+
+if __name__ == '__main__':
+    app.run(
+        host=os.getenv('FLASK_AC_APP_HOST'),
+        port=int(os.getenv('FLASK_AC_APP_PORT')),
+        debug=os.getenv('FLASK_AC_APP_DEBUG'),
+        threaded=True
+    )
+
+    with app.app_context():
+        print("App context is created")
+        # read all constants from settings
+        for key, value in settings.__dict__.items():
+            print(f'{key}: {value}')
+            if key.isupper():
+                app.config[key] = value
+
+    print("App is running")
+
+===== ROTAS DA API DO EXTREMEXP =====
+extremexp_accesscontrol/blockchain_interface/helpers/testing.py:130:    tx_hash = pip_interface.add_resource("resource_1", "hash_123")
+extremexp_accesscontrol/blockchain_interface/helpers/testing.py:131:    print(f"add_resource transaction hash: {tx_hash}")
+extremexp_accesscontrol/blockchain_interface/helpers/testing.py:238:    pip_interface.add_resource("resource_1", "0x3e19fc037c6ced7075bbbb8e3163c92a")
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PIP.py:62:    def add_resource(self, uri: str, contentHash: str):
+extremexp_accesscontrol/person/views.py:16:api: Namespace = Namespace('Person', description='ExtremeXP Person Endpoints')
+extremexp_accesscontrol/person/views.py:40:@api.route("/login")
+extremexp_accesscontrol/person/views.py:42:    @api.doc('login', params={
+extremexp_accesscontrol/person/views.py:67:@api.route("/userinfo")
+extremexp_accesscontrol/person/views.py:69:    @api.doc('userinfo', security='bearerAuth')
+extremexp_accesscontrol/person/views.py:86:@api.route("/register")
+extremexp_accesscontrol/person/views.py:88:    @api.doc('register', params={
+extremexp_accesscontrol/person/views.py:122:@api.route("/user")
+extremexp_accesscontrol/person/views.py:124:    @api.doc('list_person', params={'page': 'Page number to retrieve', 'size': 'Number of users per page'})
+extremexp_accesscontrol/person/views.py:170:@api.route("/user/<string:uuid>")
+extremexp_accesscontrol/person/views.py:172:    @api.doc('get_person', params={'uuid': 'UUID of the person'})
+extremexp_accesscontrol/orgs/views.py:10:api: Namespace = Namespace('Orgs', description='ExtremeXP Organisations Endpoints')
+extremexp_accesscontrol/orgs/views.py:20:@api.route("/groups")
+extremexp_accesscontrol/orgs/views.py:22:    @api.doc('list_orgs_groups')
+extremexp_accesscontrol/orgs/views.py:41:    @api.doc('create_orgs_groups')
+extremexp_accesscontrol/orgs/views.py:75:@api.route("/roles")
+extremexp_accesscontrol/orgs/views.py:77:    @api.doc('list_orgs_roles')
+extremexp_accesscontrol/orgs/views.py:94:    @api.doc('create_orgs_groups')
+extremexp_accesscontrol/api/__init__.py:17:blueprint = Blueprint('api', __name__,
+extremexp_accesscontrol/api/api.py:7:api: Namespace = Namespace('Translator', description='ExtremeXP Translator Endpoints')
+extremexp_accesscontrol/api/api.py:13:@api.route("/")
+extremexp_accesscontrol/api/api.py:15:    @api.doc('list_policies')
+extremexp_accesscontrol/api/api.py:16:    @api.marshal_list_with(policy_model)
+extremexp_accesscontrol/api/api.py:25:    @api.doc('create_policy')
+extremexp_accesscontrol/api/api.py:26:    @api.expect(policy_model)
+extremexp_accesscontrol/api/api.py:27:    @api.marshal_with(policy_model, code=201)
+extremexp_accesscontrol/resource/views.py:13:api: Namespace = Namespace('Resources', description='ExtremeXP Resource Management Endpoints')
+extremexp_accesscontrol/resource/views.py:44:@api.route("/protect")
+extremexp_accesscontrol/resource/views.py:46:    @api.doc('protect', params={
+extremexp_accesscontrol/resource/views.py:64:            tx = PIPSmartContract.add_resource(
+extremexp_accesscontrol/resource/views.py:83:    @api.doc('protect', params={
+extremexp_accesscontrol/resource/views.py:106:@api.route("/access")
+extremexp_accesscontrol/resource/views.py:108:    @api.doc('access', params={
+
+
+===== CONTRATOS SOLIDITY (cabeçalhos) =====
+
+--- extremexp_accesscontrol/contracts/KeycloakLogs.sol ---
+2:pragma solidity ^0.8.17;
+4:contract KeycloakLogs {
+8:    function push(string memory log) public {
+13:    function getLastLog() public view returns (string memory) {
+18:    function length() public view returns (uint){
+
+--- extremexp_accesscontrol/contracts/PAP.sol ---
+2:pragma solidity ^0.8.18;
+4:contract PolicyAdministrationPoint{
+10:    function registerResource(string memory uri, address policyAddress) public{
+14:    function getResourcePolicy(string memory uri) public view returns (address) {
+18:    function removeResourcePolicy(string memory uri) public {
+22:    function registerPolicy(address policyAddress) public {
+31:    function getRegisteredPolicy() public view returns (address[] memory){
+35:    function unregisterPolicy(address policyAddress) public {
+
+--- extremexp_accesscontrol/contracts/PIP.sol ---
+2:pragma solidity ^0.8.18;
+5:contract PolicyInformationPoint {
+27:    event AccessGranted(address organisation, uint256 expiresAt);
+30:    function grantOnBehalfOfToken(address organisation) public {
+38:    function organisationHasAccess(address user, address organisation) public view returns (bool) {
+43:    function revokeAccess(address user) public {
+48:    function addGroupToUser(address user, string memory group) public {
+63:    function getUserGroups(address user) public view returns (string[] memory){
+68:    function removeGroupFromUser(address user, string memory group) public {
+81:    function setUserRoleAttribute(address user, string memory role) public {
+87:    function getUserRoleAttribute(address user) public view returns (string memory role) {
+92:    function addResource(string memory uri, string memory contentHash) public{
+101:    function updateResourceContentHash(string memory uri, string memory contentHash) public{
+106:    function getResourceAttributes(string memory uri) public view returns (ResourceAttributes memory){
+
+--- extremexp_accesscontrol/contracts/SamplePolicy.sol ---
+2:pragma solidity ^0.8.18;
+6:contract SamplePolicy is AccessControlPolicy {
+48:    function assembleAreas(int256[] memory points) private {
+59:    function isDuringWorkHours() public view returns (bool) {
+66:    function isIPWhitelisted(string memory ip) public view returns (bool) {
+80:    function isPointInPolygon(Area memory polygon, Location memory targetPoint) public pure returns (bool) {
+106:    function isUserNearApprovedLocation(Location memory userLocation) public view returns (bool) {
+115:    function hasAllowedRole(string memory userRole) public view returns (bool) {
+124:    function hasAllowedGroup(string[] memory userGroups) public view returns (bool) {
+135:    function isResourceValid(string memory resourceContentHash) public view returns (bool){
+139:    function evaluateRequest(RequestContext memory context) external view returns (bool) {
+
+--- extremexp_accesscontrol/contracts/PDP.sol ---
+2:pragma solidity ^0.8.18;
+8:contract PDP {
+17:    function evaluateRequest(
+51:    function setPAP(address papAddress) public {
+55:    function setPIP(address pipAddress) public {
+59:    function getPAP() public view returns (address) {
+63:    function getPIP() public view returns (address) {
+
+--- extremexp_accesscontrol/contracts/interfaces/AccessControlPolicy.sol ---
+2:pragma solidity ^0.8.18;
+39:    function evaluateRequest(RequestContext memory context) external view returns (bool);
+
+
+===== INTERFACE COM A BLOCKCHAIN (assinaturas) =====
+extremexp_accesscontrol/blockchain_interface/user.py:4:from web3 import Web3, HTTPProvider
+extremexp_accesscontrol/blockchain_interface/user.py:10:class BlockchainUser:
+extremexp_accesscontrol/blockchain_interface/user.py:11:    def __init__(self, blockchain_address: str, gas_limit: int = 4100000):
+extremexp_accesscontrol/blockchain_interface/user.py:12:        self.web3 = Web3(HTTPProvider(blockchain_address))
+extremexp_accesscontrol/blockchain_interface/user.py:19:    def load_from_evm_interface(self, evm_interface: EVMInterface):
+extremexp_accesscontrol/blockchain_interface/user.py:32:    def load_account(self, account_pk: str):
+extremexp_accesscontrol/blockchain_interface/user.py:43:    def create_account(self):
+extremexp_accesscontrol/blockchain_interface/user.py:53:    def get_balance(self):
+extremexp_accesscontrol/blockchain_interface/user.py:61:    def transfer_to(self, to_address: str, amount: float):
+extremexp_accesscontrol/blockchain_interface/deployer.py:6:from web3 import Web3, HTTPProvider
+extremexp_accesscontrol/blockchain_interface/deployer.py:17:class SolidityDeployer:
+extremexp_accesscontrol/blockchain_interface/deployer.py:24:    def __init__(self, blockchain_address: str, gas_limit: int):
+extremexp_accesscontrol/blockchain_interface/deployer.py:25:        self.web3 = Web3(HTTPProvider(blockchain_address))
+extremexp_accesscontrol/blockchain_interface/deployer.py:31:    def load_account(self, account_pk: str):
+extremexp_accesscontrol/blockchain_interface/deployer.py:39:    def load_from_evm_interface(self, evm_interface: EVMInterface):
+extremexp_accesscontrol/blockchain_interface/deployer.py:51:    def compile_contract(self, contract_path: str, dump_compiled=False) -> dict:
+extremexp_accesscontrol/blockchain_interface/deployer.py:84:    def deploy_contract(self, contract_path: str, *args):
+extremexp_accesscontrol/blockchain_interface/errors.py:1:class SolidityCompilationError(Exception):
+extremexp_accesscontrol/blockchain_interface/errors.py:4:class SolidityDeploymentError(Exception):
+extremexp_accesscontrol/blockchain_interface/helpers/utils.py:3:def load_json_from_file(file_path):
+extremexp_accesscontrol/blockchain_interface/helpers/utils.py:13:def transaction_to_dict(tx):
+extremexp_accesscontrol/blockchain_interface/helpers/testing.py:8:def validate_on_behalf_of_permission(blockchain_interface: EVMInterface, pip_interface: PolicyInformationPoint, test_user: BlockchainUser) -> bool:
+extremexp_accesscontrol/blockchain_interface/helpers/testing.py:51:def validate_user_attributes_management(pip_interface: PolicyInformationPoint, test_user: BlockchainUser) -> bool:
+extremexp_accesscontrol/blockchain_interface/helpers/testing.py:123:def validate_resource_management(pip_interface: PolicyInformationPoint) -> bool:
+extremexp_accesscontrol/blockchain_interface/helpers/testing.py:157:def validate_resource_policy_management(pap_interface: PolicyAdministrationPoint, test_policy_address: str) -> bool:
+extremexp_accesscontrol/blockchain_interface/helpers/testing.py:218:def validate_policy_evaluation(pdp_interface: PolicyDecisionPoint, pip_interface: PolicyInformationPoint, test_user: BlockchainUser) -> bool:
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:3:from web3 import Web3, HTTPProvider
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:7:class EVMInterface:
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:8:    def __init__(self, blockchain_address: str, blockchain_type: str):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:9:        self.web3 = Web3(HTTPProvider(blockchain_address))
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:15:    def connect(self, account_pk: str):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:26:    def disconnect(self):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:34:    def get_balance(self, address):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:37:    def send_transaction(self, from_address, to_address, amount):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:40:    def get_contract(self, contract_address, abi, bytecode) -> Type[Contract]:
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:50:    def deploy_contract(self, contract_data):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:53:    def call_contract_read_function(self, contract, function_name, *args):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:70:    def call_contract_write_function(self, contract, function_name, *args) -> dict:
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:98:    def call_contract_write_function_directly(self, contract, function_name, *args) -> dict:
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:109:    def listen_to_events(self, contract_address, event_name, callback):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:112:    def get_transaction_receipt(self, transaction_hash):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:115:    def get_block(self, block_number):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:118:    def get_latest_block(self):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:121:    def get_transaction(self, transaction_hash):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:124:    def get_network_info(self):
+extremexp_accesscontrol/blockchain_interface/interfaces/EVMInterface.py:127:    def get_account_info(self, address):
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PAP.py:6:class PolicyAdministrationPoint(SmartContract):
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PAP.py:7:    def __init__(self, evm_interface, contract_address: str, contract_address_path: str):
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PAP.py:10:    def register_resource(self, uri: str, policy_address: str):
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PAP.py:22:    def get_resource_policy(self, uri: str):
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PAP.py:30:    def remove_resource_policy(self, uri: str):
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PAP.py:39:    def register_policy(self, policy_address):
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PAP.py:50:    def get_registered_policy(self) -> List[str]:
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PAP.py:57:    def unregister_policy(self, policy_address):
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PDP.py:4:class PolicyDecisionPoint(SmartContract):
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PDP.py:5:    def __init__(self, evm_interface, contract_address: str, contract_address_path: str):
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PDP.py:8:    def evaluate_request(self, user: str, user_email: str, user_ip_address: str, user_request_scope: str, user_lat: int, user_long: int, resource_uri: str) -> bool:
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PDP.py:26:    def set_pip(self, pip_address: str):
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PDP.py:37:    def get_pip(self) -> str:
+extremexp_accesscontrol/blockchain_interface/interfaces/ABACContracts/PDP.py:44:    def set_pap(self, pap_address: str):
+
+
+===== PASTA FABRIC E LOG =====
+fabric
+fabric/.gitignore
+fabric/kubespray
+fabric/kubespray/ansible.cfg
+fabric/node_scripts
+fabric/node_scripts/.ipynb_checkpoints
+fabric/node_scripts/1.trigger_VFL_base.sh
+fabric/node_scripts/2.trigger_VFL_removal.sh
+fabric/node_scripts/3.trigger_VFL_remove_add.sh
+fabric/node_scripts/4.trigger_VFL_backtrack.sh
+fabric/node_scripts/OLD-worker_node_start.sh
+fabric/node_scripts/configure_dynamos.sh
+fabric/node_scripts/control_kubespray_setup.sh
+fabric/node_scripts/define_etcd_data.sh
+fabric/node_scripts/define_etcd_data_local.sh
+fabric/node_scripts/dot_kube.sh
+fabric/node_scripts/install_dynamos.sh
+fabric/node_scripts/install_k9s.sh
+fabric/node_scripts/node_setup.sh
+fabric/node_scripts/poll_results.sh
+fabric/node_scripts/reset_kubespray.sh
+fabric/node_scripts/start_kubespray.sh
+fabric/node_scripts/trigger_VFL.sh
+fabric/scenario_1.json
+fabric/scenario_2.json
+fabric/scenario_3.json
+fabric/scenario_4.json
+fabric/setup_guides
+
+--- fabric_steps_log.txt ---
+FABRIC log
+
+-originally tried on the default version of the jupyter FABRIC
+-11/09 tried "bleeding edge" version 
+	(it looks like it works, but the execution never ends...) (takes ~5 min) (then goes to the after-boot-config and there is getting stuck...)
+	(I think it was more than 1:30h and it still is stuck; I willinterrupt)
+	TODO: try different parameters on the slice.submit
+- nodes seem to work, I get output from all the nodes (via the execute and the list_nodes)
+- there might be some issue with the Tokyo nodes... (others seem ok)
+
+notebook 2 seems ok 
+
+Notebook 3 
+after some tricks to get all the ips (I had to do the last one manually, because otherwise it would get stuck) 
+	but it seemed to finish ok with this hack 
+
+
+nodebook 4:
+there were some warnings 
+but at the end seems reasonable. I assume it is OK 
+
+notebook 5:
+had to assign manually the agents and the thirdparties variables
+but worked otherwise. 
+
+--------------------------------
+cloned SD locally 	 
+
+new venv: 
+dynamos_fabric_env
+
+(active env)
+
+install fablib https://github.com/fabric-testbed/fabrictestbed-extensions
+pip install fabrictestbed-extensions
+
+
+
+
+TODO: 
+
+
+===== OUTROS SERVIÇOS / COMPOSES =====
+./go/go.mod
+./python/vfl-train/main.py
+./python/sql-query/main.py
+./python/vfl-train-demo/main.py
+./python/vfl-train-model/main.py
+./python/vfl-train-model-demo/main.py
+./extremexp_accesscontrol/docker-compose.yaml
+./extremexp_accesscontrol/app.py

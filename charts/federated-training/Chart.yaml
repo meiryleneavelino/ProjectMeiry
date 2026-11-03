@@ -1,0 +1,6 @@
+apiVersion: v2
+name: federated-training
+description: Opt-in synthetic federated training sandbox for UVA, VU and TUDelft
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

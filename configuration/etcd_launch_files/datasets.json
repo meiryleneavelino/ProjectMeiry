@@ -1,0 +1,30 @@
+[
+  {
+    "name": "outcomeData",
+    "type": "csv",
+    "delimiter": ",",
+    "tables": ["outcomeData"],
+    "sensitive_columns": { "outcomeData": ["PassengerId", "Survived"] }
+  },
+  {
+    "name": "alphaData",
+    "type": "csv",
+    "delimiter": ",",
+    "tables": ["alphaData"],
+    "sensitive_columns": { "alphaData": ["PassengerId"] }
+  },
+  {
+    "name": "enigmaData",
+    "type": "csv",
+    "delimiter": ",",
+    "tables": ["enigmaData"],
+    "sensitive_columns": { "enigmaData": ["PassengerId", "Name"] }
+  },
+  {
+    "name": "zenithData",
+    "type": "csv",
+    "delimiter": ",",
+    "tables": ["zenithData"],
+    "sensitive_columns": { "zenithData": ["PassengerId"] }
+  }
+]

@@ -1,0 +1,313 @@
+{{- if .Values.integrated.enabled }}
+{{- $root := . }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: core
+  labels:
+    dynamos-training: "true"
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbit
+  namespace: training-system
+type: Opaque
+stringData:
+  password: {{ required "Set integrated.rabbitPassword" .Values.integrated.rabbitPassword | quote }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rabbit
+  namespace: core
+type: Opaque
+stringData:
+  password: {{ .Values.integrated.rabbitPassword | quote }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rabbit-data
+  namespace: core
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 256Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rabbitmq
+  namespace: core
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: dynamos-rabbitmq
+  template:
+    metadata:
+      labels:
+        app: dynamos-rabbitmq
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: rabbitmq
+          image: rabbitmq:3.13-alpine
+          env:
+            - name: HOME
+              value: /var/lib/rabbitmq
+            - name: RABBITMQ_DEFAULT_USER
+              value: normal_user
+            - name: RABBITMQ_DEFAULT_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: rabbit
+                  key: password
+          ports:
+            - containerPort: 5672
+          readinessProbe:
+            tcpSocket:
+              port: 5672
+            initialDelaySeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/rabbitmq
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: rabbit-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq
+  namespace: core
+spec:
+  selector:
+    app: dynamos-rabbitmq
+  ports:
+    - port: 5672
+      targetPort: 5672
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: etcd-headless
+  namespace: core
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: dynamos-etcd
+  ports:
+    - name: client
+      port: 2379
+    - name: peer
+      port: 2380
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: etcd
+  namespace: core
+spec:
+  serviceName: etcd-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: dynamos-etcd
+  template:
+    metadata:
+      labels:
+        app: dynamos-etcd
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: etcd
+          image: gcr.io/etcd-development/etcd:v3.5.12
+          command: [/usr/local/bin/etcd]
+          args:
+            - --name=$(POD_NAME)
+            - --data-dir=/var/lib/etcd
+            - --listen-client-urls=http://0.0.0.0:2379
+            - --advertise-client-urls=http://$(POD_NAME).etcd-headless.core.svc.cluster.local:2379
+            - --listen-peer-urls=http://0.0.0.0:2380
+            - --initial-advertise-peer-urls=http://$(POD_NAME).etcd-headless.core.svc.cluster.local:2380
+            - --initial-cluster=etcd-0=http://etcd-0.etcd-headless.core.svc.cluster.local:2380,etcd-1=http://etcd-1.etcd-headless.core.svc.cluster.local:2380,etcd-2=http://etcd-2.etcd-headless.core.svc.cluster.local:2380
+            - --initial-cluster-token=dynamos-training-etcd
+          env:
+            - name: POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+          readinessProbe:
+            tcpSocket:
+              port: 2379
+            initialDelaySeconds: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/etcd
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests:
+            storage: 64Mi
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dynamos-config
+  namespace: training-system
+data:
+  requestType.json: '[{"name":"mlTrainingRequest","requiredServices":["ml-trainer"],"optionalServices":{}}]'
+  archetype.json: '[{"name":"computeToData","computeProvider":"dataProvider","resultRecipient":"requestor","weight":100}]'
+  microservices.json: '[{"name":"ml-trainer","label":"dataProvider","allowedOutputs":["modelUpdate"]}]'
+  datasets.json: '[]'
+  optional_microservices.json: '[]'
+  agreements.json: |
+    {{- $agreements := list }}
+    {{- range $namespace := .Values.organizations }}
+    {{- $relation := dict "ID" "sandbox-researcher" "requestTypes" (list "mlTrainingRequest") "dataSets" (list "synthetic-local-v1") "allowedAlgorithms" (list "logistic-regression-v1") "allowedArchetypes" (list "computeToData") "allowedComputeProviders" (list) }}
+    {{- $agreements = append $agreements (dict "name" (upper $namespace) "relations" (dict $root.Values.integrated.user $relation) "computeProviders" (list) "archetypes" (list "computeToData")) }}
+    {{- end }}
+    {{ $agreements | toJson }}
+{{- range $service := list "api-gateway" "orchestrator" "policy-enforcer" }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $service }}
+  namespace: training-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: dynamos-service
+      service: {{ $service }}
+  template:
+    metadata:
+      labels:
+        app: dynamos-service
+        service: {{ $service }}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: {{ $service }}
+          image: {{ $root.Values.integrated.image | quote }}
+          imagePullPolicy: IfNotPresent
+          command: [/app/{{ $service }}]
+          env:
+            - name: OC_AGENT_HOST
+              value: collector.core.svc.cluster.local:55678
+            - name: TRAINING_ENABLED
+              value: "true"
+            - name: TRAINING_USER
+              value: {{ $root.Values.integrated.user | quote }}
+            - name: TRAINING_COORDINATOR_URL
+              value: http://training-coordinator.training-system.svc.cluster.local:8080
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: training-auth
+                  key: api-token
+            - name: TRAINING_SIGNING_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: training-auth
+                  key: signing-key
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 300m
+              memory: 256Mi
+          {{- if ne $service "policy-enforcer" }}
+          readinessProbe:
+            tcpSocket:
+              port: 8080
+            initialDelaySeconds: 3
+          {{- end }}
+          {{- if eq $service "orchestrator" }}
+          volumeMounts:
+            - name: configuration
+              mountPath: /app/etcd
+              readOnly: true
+          {{- end }}
+        {{- include "training.sidecar" $root | nindent 8 }}
+      {{- if eq $service "orchestrator" }}
+      volumes:
+        - name: configuration
+          configMap:
+            name: dynamos-config
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $service }}
+  namespace: training-system
+spec:
+  selector:
+    app: dynamos-service
+    service: {{ $service }}
+  ports:
+    - port: 8080
+      targetPort: 8080
+{{- end }}
+{{- end }}

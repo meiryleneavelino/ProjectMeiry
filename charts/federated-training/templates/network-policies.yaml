@@ -1,0 +1,166 @@
+{{- range $namespace := .Values.organizations }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: training-worker
+  namespace: {{ $namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: federated-training
+      role: worker
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    {{- if $.Values.integrated.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: core
+          podSelector:
+            matchLabels:
+              app: dynamos-rabbitmq
+      ports:
+        - protocol: TCP
+          port: 5672
+    {{- end }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: federated-training
+              role: agent
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: training-agent
+  namespace: {{ $namespace }}
+spec:
+  podSelector:
+    matchLabels:
+      app: federated-training
+      role: agent
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: training-system
+          podSelector:
+            matchLabels:
+              app: federated-training
+              role: coordinator
+        - podSelector:
+            matchLabels:
+              app: federated-training
+              role: worker
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+    {{- if $.Values.integrated.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: core
+      ports:
+        - protocol: TCP
+          port: 2379
+        - protocol: TCP
+          port: 5672
+        - protocol: TCP
+          port: 55678
+    {{- end }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: training-coordinator
+  namespace: training-system
+spec:
+  podSelector:
+    matchLabels:
+      app: federated-training
+      role: coordinator
+  policyTypes: [Ingress, Egress]
+  {{- if .Values.integrated.enabled }}
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: dynamos-service
+              service: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+  {{- else }}
+  ingress: []
+  {{- end }}
+  egress:
+    {{- if .Values.integrated.enabled }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app: dynamos-service
+              service: api-gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+    {{- end }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              dynamos-training: "true"
+          podSelector:
+            matchLabels:
+              app: federated-training
+              role: agent
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53

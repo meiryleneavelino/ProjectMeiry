@@ -1,0 +1,10 @@
+[
+    {
+        "data_steward": "UVA",
+        "types": {
+            "sqlDataRequest": [
+                "sql-anonymize"
+            ]
+        }
+    }
+]
