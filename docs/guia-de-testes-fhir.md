@@ -26,7 +26,21 @@ api() { curl -s -H "Authorization: Bearer $T" -H "Content-Type: application/json
   depois.
 - `api` é só um atalho para o `curl` já com o token.
 
-Antes de começar, confira que nada antigo está ocupando as portas:
+**Confira que não há clusters kind ligados.** Eles disputam CPU e memória, e
+com eles o HAPI pode levar mais de 20 minutos para subir, ou nem subir:
+
+```bash
+"$D" ps --format '{{.Names}}' | grep control-plane
+"$D" stop $("$D" ps --format '{{.Names}}' | grep control-plane)
+```
+
+O primeiro comando lista os clusters; se aparecer algum (por exemplo
+`dynamos-control-plane`, `dynamos-training-control-plane` ou
+`scattered-training-control-plane`), o segundo os para. Eles voltam com
+`docker start <nome>`; o `stop` não apaga nada. O `tools.py start` também
+avisa quando encontra clusters ligados.
+
+Antes de começar, confira também que nada antigo está ocupando as portas:
 
 ```bash
 lsof -nP -iTCP:8099 -sTCP:LISTEN    # vazio = livre (8099 é o PEP)
@@ -381,7 +395,7 @@ Ele sobe tudo de novo, inclusive o chaincode, o gateway e a API, porque o
 | `{"detail":"invalid API token"}` | Faltou o token no `curl` | Use o atalho `api` da preparação (`T=$(cat .local/api-token)`) |
 | `scenario.py` "travado" depois de `reset-demo …` | Ele está recriando a rede (3-4 min) | Espere; não aperte Ctrl+C |
 | `scenario.py` termina com `ERRO` num acesso | O canal tem dados de testes anteriores (por exemplo outro consentimento) | Rode com `--reset` |
-| `HAPI FHIR did not answer /fhir/metadata in time` | Falta de memória (kind ligado) ou o HAPI ainda subindo | `"$D" logs --tail 30 fhir-hapi`; se possível desligue o kind (`"$D" stop scattered-training-control-plane`) e rode `start` de novo |
+| `HAPI FHIR did not answer /fhir/metadata in time` | **Docker sem CPU ou memória**, quase sempre por clusters kind ligados (inclusive os antigos `dynamos-control-plane` e `dynamos-training-control-plane`). Nos logs do HAPI aparecem `Thread starvation` e intervalos de vários minutos | 1. `"$D" stats --no-stream`; 2. `"$D" stop $("$D" ps --format '{{.Names}}' \| grep control-plane)`; 3. `"$D" restart fhir-hapi`; 4. `python3 tools.py start` |
 | `failed: …compose… secret file … does not exist` | `.local` foi apagado à mão | `python3 tools.py start` recria os segredos |
 | Lista de consentimentos ou resultados "atrasada" | Cache de busca do HAPI | Já tratado (`no-cache`); clique em atualizar, ou mude de tela e volte |
 

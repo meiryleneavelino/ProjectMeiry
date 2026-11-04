@@ -88,24 +88,30 @@ def tools(command, capture=True, check=True):
 
 def warn_neighbors():
     names = run(DOCKER, "ps", "--format", "{{.Names}}", capture=True).stdout.split()
-    running = [name for name in NEIGHBORS if name in names]
+    running = [name for name in names if name in NEIGHBORS or name.endswith("-control-plane")]
     if running:
         stats = run(DOCKER, "stats", "--no-stream", "--format", "{{.Name}} {{.MemUsage}}", *running, capture=True, check=False).stdout
         print("WARNING: other environments are running and share Docker's memory (not stopped by this tool):")
         for line in stats.strip().splitlines():
             name = line.split()[0]
-            print(f"  - {name} ({NEIGHBORS.get(name, '')}): {' '.join(line.split()[1:])}")
+            print(f"  - {name} ({NEIGHBORS.get(name, 'another kind cluster')}): {' '.join(line.split()[1:])}")
+        clusters = [name for name in running if name.endswith("-control-plane")]
         print("  The FHIR stack needs about 1.4 GB more. Stop them yourself if Docker runs out of memory.")
+        if len(clusters) > 1:
+            print(f"  {len(clusters)} kind clusters are running; HAPI may take very long to start. The FHIR part needs none of them:")
+            print(f"    docker stop {' '.join(clusters)}")
 
 
-def hapi_ready(timeout=300):
+def hapi_ready(timeout=600):
     deadline = time.time() + timeout
     while time.time() < deadline:
         result = tools("curl -fsS -m 5 http://fhir-hapi:8080/fhir/metadata", check=False)
         if result.returncode == 0:
             return json.loads(result.stdout)
         time.sleep(5)
-    raise SystemExit("HAPI FHIR did not answer /fhir/metadata in time: docker logs fhir-hapi")
+    raise SystemExit("HAPI FHIR did not answer /fhir/metadata in time. Usual cause: Docker is out of CPU/memory "
+                     "(check: docker stats --no-stream; stop other kind clusters). Then: docker restart fhir-hapi "
+                     "and python3 tools.py start again. Logs: docker logs --tail 30 fhir-hapi")
 
 
 def start():
