@@ -1,121 +1,85 @@
-import json
-from abc import ABC, abstractmethod
-from contextlib import contextmanager
-from datetime import datetime, timezone
-from uuid import uuid4
+"""Client for the Hyperledger Fabric governance ledger.
 
-from sast.contracts import canonical_json, content_hash
-from .storage import IntegrityError
-
-
-FIELDS = {
-    "CodeSubmitted": {"code_hash", "researcher_id", "researcher_org"},
-    "ReviewerSelected": {"code_hash", "reviewer", "eligible", "excluded", "seed", "selection_version"},
-    "CodeAnalyzed": {"code_hash", "reviewer", "image", "image_id", "image_digest", "digest_kind",
-                     "rules_hash", "policy_hash", "semgrep_version", "report_hash", "score", "counts"},
-    "CodeValidated": {"code_hash", "report_hash", "decision"},
-    "CodeRejected": {"code_hash", "report_hash", "decision"},
-    "AlgorithmRegistered": {"algorithm_id", "code_hash", "report_hash", "score", "validation_source", "executable"},
-    "TrainingStarted": {"run_id", "algorithm_id", "organizations"},
-}
+The Horus API does not keep the governance history itself any more. It calls
+the researcher gateway (Go service in the researcher organization's namespace),
+which signs transactions with the researcher's Fabric identity and reads from
+that organization's own peer. The ledger content is replicated on the peers of
+UVA, VU and TUDELFT; no single server holds the authoritative copy.
+"""
+import httpx
 
 
-def now():
-    return datetime.now(timezone.utc).isoformat()
+EVENT_TYPES = (
+    "ConfigInitialized", "CodeSubmitted", "SeedCommitted", "SeedRevealed", "DrawForced", "ReviewerSelected",
+    "CodeAnalyzed", "CodeValidated", "CodeRejected", "AlgorithmRegistered", "AnalysisFailed",
+    "AnalysisAudited", "TrainingStarted",
+)
 
 
-class LedgerBackend(ABC):
-    @abstractmethod
-    def verify(self):
-        raise NotImplementedError
+class LedgerError(ValueError):
+    """A ledger answer that the API forwards with an HTTP status."""
 
-    @abstractmethod
-    def events(self, event_type=None, code_hash=None, offset=0, limit=50):
-        raise NotImplementedError
-
-    @abstractmethod
-    def append(self, event_type, payload):
-        raise NotImplementedError
-
-    @abstractmethod
-    def get(self, tx_id):
-        raise NotImplementedError
+    def __init__(self, message, status=503, kind="unavailable"):
+        super().__init__(message)
+        self.status = status
+        self.kind = kind
 
 
-class SQLiteLedger(LedgerBackend):
-    def __init__(self, store):
-        self.store = store
+class FabricLedger:
+    backend = "hyperledger-fabric"
 
-    def check(self, connection):
-        head = {"sequence": 0, "record_hash": "0" * 64}
+    def __init__(self, url, token_file, transport=None):
+        self.url = url.rstrip("/")
+        self.token_file = token_file
+        self.transport = transport
+
+    def _request(self, method, path, **arguments):
         try:
-            for row in connection.execute("SELECT * FROM events ORDER BY sequence"):
-                event = json.loads(row["envelope"])
-                expected_hash = event.pop("record_hash")
-                if (event["sequence"] != head["sequence"] + 1 or row["sequence"] != event["sequence"]
-                        or row["tx_id"] != event["tx_id"] or event["previous_hash"] != head["record_hash"]
-                        or event["event_type"] not in FIELDS
-                        or set(event["payload"]) != FIELDS[event["event_type"]]
-                        or content_hash(canonical_json(event)) != expected_hash):
-                    raise ValueError("Invalid event")
-                head = {"sequence": event["sequence"], "record_hash": expected_hash}
-        except (KeyError, TypeError, ValueError):
-            raise IntegrityError("Ledger record integrity verification failed.") from None
-        if self.store.read_anchor() != head:
-            raise IntegrityError("Ledger head does not match the external anchor.")
-        return head
-
-    @contextmanager
-    def transaction(self):
-        with self.store.transaction() as connection:
-            self.check(connection)
-            yield connection
-            row = connection.execute("SELECT envelope FROM events ORDER BY sequence DESC LIMIT 1").fetchone()
-            head = {"sequence": 0, "record_hash": "0" * 64}
-            if row:
-                event = json.loads(row["envelope"])
-                head = {"sequence": event["sequence"], "record_hash": event["record_hash"]}
-            connection.commit()
-            self.store.write_anchor(head)
-
-    def append_in(self, connection, event_type, payload):
-        if event_type not in FIELDS or set(payload) != FIELDS[event_type]:
-            raise ValueError("Unexpected ledger event fields.")
-        row = connection.execute("SELECT envelope FROM events ORDER BY sequence DESC LIMIT 1").fetchone()
-        previous = json.loads(row["envelope"]) if row else {"sequence": 0, "record_hash": "0" * 64}
-        event = {"version": 1, "sequence": previous["sequence"] + 1, "tx_id": f"local-{uuid4().hex}",
-                 "event_type": event_type, "recorded_at": now(), "payload": payload,
-                 "previous_hash": previous["record_hash"]}
-        event["record_hash"] = content_hash(canonical_json(event))
-        connection.execute("INSERT INTO events VALUES (?, ?, ?)",
-                           (event["sequence"], event["tx_id"], canonical_json(event).decode()))
-        return event
-
-    def append(self, event_type, payload):
-        with self.transaction() as connection:
-            return self.append_in(connection, event_type, payload)
-
-    def verify(self):
+            token = self.token_file.read_text().strip()
+        except OSError:
+            raise LedgerError("Ledger gateway credentials are unavailable. Run 'python3 tools.py ledger setup'.") from None
         try:
-            with self.store.transaction() as connection:
-                head = self.check(connection)
-            return {"valid": True, **head, "backend": "sqlite-hash-chain"}
-        except IntegrityError as error:
-            return {"valid": False, "error": str(error), "backend": "sqlite-hash-chain"}
+            with httpx.Client(timeout=120, trust_env=False, transport=self.transport,
+                              headers={"Authorization": f"Bearer {token}"}) as client:
+                response = client.request(method, self.url + path, **arguments)
+        except httpx.HTTPError:
+            raise LedgerError("Ledger gateway is unreachable. Is 'python3 tools.py ledger forward' running?") from None
+        try:
+            body = response.json()
+        except ValueError:
+            body = None
+        if not response.is_success:
+            detail = body.get("detail") if isinstance(body, dict) else None
+            kind = body.get("kind", "unavailable") if isinstance(body, dict) else "unavailable"
+            raise LedgerError(detail or f"Ledger gateway error ({response.status_code})", response.status_code, kind)
+        return body
 
-    def get(self, tx_id):
-        with self.store.transaction() as connection:
-            self.check(connection)
-            row = connection.execute("SELECT envelope FROM events WHERE tx_id=?", (tx_id,)).fetchone()
-        if row is None:
-            raise LookupError("Ledger transaction not found.")
-        return json.loads(row[0])
+    def status(self):
+        return self._request("GET", "/status")
 
-    def events(self, event_type=None, code_hash=None, offset=0, limit=50):
-        with self.store.transaction() as connection:
-            self.check(connection)
-            rows = connection.execute("SELECT envelope FROM events ORDER BY sequence DESC").fetchall()
-            events = [json.loads(row[0]) for row in rows]
-        filtered = [event for event in events if (not event_type or event["event_type"] == event_type)
-                    and (not code_hash or event["payload"].get("code_hash") == code_hash)]
-        return {"items": filtered[offset:offset + limit], "total": len(filtered), "offset": offset, "limit": limit}
+    def config(self):
+        return self._request("GET", "/config")
+
+    def submissions(self):
+        return self._request("GET", "/submissions") or []
+
+    def submission(self, code_hash):
+        try:
+            return self._request("GET", f"/submissions/{code_hash}")
+        except LedgerError as error:
+            if error.status == 404:
+                return None
+            raise
+
+    def submit(self, code, organizations):
+        return self._request("POST", "/submissions", json={"code": code, "organizations": organizations})
+
+    def events(self):
+        return self._request("GET", "/events") or []
+
+    def transaction(self, tx_id):
+        return self._request("GET", f"/transactions/{tx_id}")
+
+    def record_training(self, run_id, algorithm_id, organizations):
+        return self._request("POST", "/training-starts", json={
+            "run_id": run_id, "algorithm_id": algorithm_id, "organizations": organizations})

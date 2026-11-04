@@ -16,6 +16,8 @@ class Settings:
     pseudonym: str = "researcher-local-001"
     training_url: str = "http://127.0.0.1:8096/api/v1/ml"
     training_token_file: Path = ROOT.parent / "configuration/federated-training/.local/api-token"
+    ledger_url: str = "http://127.0.0.1:8098"
+    ledger_token_file: Path = ROOT / ".local/ledger/gateway-token"
 
     @classmethod
     def load(cls):
@@ -25,7 +27,9 @@ class Settings:
         return cls(Path(os.environ.get("HORUS_STATE_ROOT", ROOT / ".local")),
                    researcher["name"], researcher["organization"], researcher["pseudonym"],
                    os.environ.get("HORUS_TRAINING_URL", config["training_url"]),
-                   Path(os.environ.get("HORUS_TRAINING_TOKEN_FILE", cls.training_token_file)))
+                   Path(os.environ.get("HORUS_TRAINING_TOKEN_FILE", cls.training_token_file)),
+                   os.environ.get("HORUS_LEDGER_URL", config.get("ledger_url", cls.ledger_url)),
+                   Path(os.environ.get("HORUS_LEDGER_TOKEN_FILE", cls.ledger_token_file)))
 
     def token(self):
         self.state_root.mkdir(parents=True, exist_ok=True, mode=0o700)

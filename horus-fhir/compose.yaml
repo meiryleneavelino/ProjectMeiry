@@ -1,0 +1,275 @@
+# horus-fhir: HAPI FHIR R4 + a NEW Hyperledger Fabric network (HospitalMSP, LabMSP).
+# Always used through tools.py, which runs "docker compose -p horus-fhir".
+# Nothing here is shared with the horus-governance ledger (kind cluster) or
+# with any other compose project. No port is published on the host.
+name: horus-fhir
+
+x-fabric-env: &fabric-log
+  FABRIC_LOGGING_SPEC: "INFO:gossip=WARN"
+
+x-tcp-health: &tcp-health
+  interval: 5s
+  timeout: 3s
+  retries: 30
+
+services:
+  fhir-ca-hospital:
+    image: hyperledger/fabric-ca:1.5.22
+    container_name: fhir-ca.hospital
+    command: [bash, -c, 'exec fabric-ca-server start -b "admin:$$(cat /run/secrets/fhir_ca_hospital)"']
+    environment:
+      FABRIC_CA_HOME: /var/hyperledger/fabric-ca
+      FABRIC_CA_SERVER_CA_NAME: fhir-ca-hospital
+      FABRIC_CA_SERVER_PORT: "7054"
+      FABRIC_CA_SERVER_TLS_ENABLED: "true"
+      FABRIC_CA_SERVER_CSR_CN: fhir-ca.hospital
+      FABRIC_CA_SERVER_CSR_HOSTS: fhir-ca.hospital,localhost
+      FABRIC_CA_SERVER_OPERATIONS_LISTENADDRESS: 127.0.0.1:9443
+    secrets: [fhir_ca_hospital]
+    volumes: [fhir-ca-hospital:/var/hyperledger/fabric-ca]
+    networks: {horus-fhir-net: {aliases: [fhir-ca.hospital]}}
+    healthcheck: {<<: *tcp-health, test: [CMD, bash, -c, "echo > /dev/tcp/127.0.0.1/7054"]}
+    mem_limit: 100m
+    restart: unless-stopped
+
+  fhir-ca-lab:
+    image: hyperledger/fabric-ca:1.5.22
+    container_name: fhir-ca.lab
+    command: [bash, -c, 'exec fabric-ca-server start -b "admin:$$(cat /run/secrets/fhir_ca_lab)"']
+    environment:
+      FABRIC_CA_HOME: /var/hyperledger/fabric-ca
+      FABRIC_CA_SERVER_CA_NAME: fhir-ca-lab
+      FABRIC_CA_SERVER_PORT: "7054"
+      FABRIC_CA_SERVER_TLS_ENABLED: "true"
+      FABRIC_CA_SERVER_CSR_CN: fhir-ca.lab
+      FABRIC_CA_SERVER_CSR_HOSTS: fhir-ca.lab,localhost
+      FABRIC_CA_SERVER_OPERATIONS_LISTENADDRESS: 127.0.0.1:9443
+    secrets: [fhir_ca_lab]
+    volumes: [fhir-ca-lab:/var/hyperledger/fabric-ca]
+    networks: {horus-fhir-net: {aliases: [fhir-ca.lab]}}
+    healthcheck: {<<: *tcp-health, test: [CMD, bash, -c, "echo > /dev/tcp/127.0.0.1/7054"]}
+    mem_limit: 100m
+    restart: unless-stopped
+
+  # The only orderer; it belongs to HospitalMSP (decision of stage 1).
+  fhir-orderer0:
+    image: hyperledger/fabric-orderer:2.5.16
+    container_name: fhir-orderer0.hospital
+    environment:
+      <<: *fabric-log
+      ORDERER_GENERAL_LISTENADDRESS: 0.0.0.0
+      ORDERER_GENERAL_LISTENPORT: "7050"
+      ORDERER_GENERAL_LOCALMSPID: HospitalMSP
+      ORDERER_GENERAL_LOCALMSPDIR: /crypto/msp
+      ORDERER_GENERAL_TLS_ENABLED: "true"
+      ORDERER_GENERAL_TLS_PRIVATEKEY: /crypto/tls/server.key
+      ORDERER_GENERAL_TLS_CERTIFICATE: /crypto/tls/server.crt
+      ORDERER_GENERAL_TLS_ROOTCAS: "[/crypto/tls/ca.crt]"
+      ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE: /crypto/tls/server.crt
+      ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY: /crypto/tls/server.key
+      ORDERER_GENERAL_CLUSTER_ROOTCAS: "[/crypto/tls/ca.crt]"
+      ORDERER_GENERAL_BOOTSTRAPMETHOD: none
+      ORDERER_CHANNELPARTICIPATION_ENABLED: "true"
+      ORDERER_ADMIN_LISTENADDRESS: 0.0.0.0:7053
+      ORDERER_ADMIN_TLS_ENABLED: "true"
+      ORDERER_ADMIN_TLS_CERTIFICATE: /crypto/tls/server.crt
+      ORDERER_ADMIN_TLS_PRIVATEKEY: /crypto/tls/server.key
+      ORDERER_ADMIN_TLS_ROOTCAS: "[/crypto/tls/ca.crt]"
+      ORDERER_ADMIN_TLS_CLIENTAUTHREQUIRED: "true"
+      ORDERER_ADMIN_TLS_CLIENTROOTCAS: "[/crypto/tls/ca.crt]"
+      ORDERER_FILELEDGER_LOCATION: /var/hyperledger/production/orderer
+      ORDERER_CONSENSUS_WALDIR: /var/hyperledger/production/orderer/etcdraft/wal
+      ORDERER_CONSENSUS_SNAPDIR: /var/hyperledger/production/orderer/etcdraft/snapshot
+    volumes:
+      - ./.local/crypto/hospital/orderer:/crypto:ro
+      - fhir-orderer0:/var/hyperledger/production
+    networks: {horus-fhir-net: {aliases: [fhir-orderer0.hospital]}}
+    healthcheck: {<<: *tcp-health, test: [CMD, bash, -c, "echo > /dev/tcp/127.0.0.1/7050"]}
+    mem_limit: 200m
+    restart: unless-stopped
+
+  fhir-peer0-hospital:
+    image: hyperledger/fabric-peer:2.5.16
+    container_name: fhir-peer0.hospital
+    environment: &peer-env
+      <<: *fabric-log
+      CORE_PEER_ID: fhir-peer0.hospital
+      CORE_PEER_ADDRESS: fhir-peer0.hospital:7051
+      CORE_PEER_LISTENADDRESS: 0.0.0.0:7051
+      CORE_PEER_CHAINCODELISTENADDRESS: 0.0.0.0:7052
+      CORE_PEER_GOSSIP_BOOTSTRAP: fhir-peer0.hospital:7051
+      CORE_PEER_GOSSIP_EXTERNALENDPOINT: fhir-peer0.hospital:7051
+      CORE_PEER_LOCALMSPID: HospitalMSP
+      CORE_PEER_MSPCONFIGPATH: /crypto/msp
+      CORE_PEER_TLS_ENABLED: "true"
+      CORE_PEER_TLS_CERT_FILE: /crypto/tls/server.crt
+      CORE_PEER_TLS_KEY_FILE: /crypto/tls/server.key
+      CORE_PEER_TLS_ROOTCERT_FILE: /crypto/tls/ca.crt
+      CORE_PEER_FILESYSTEMPATH: /var/hyperledger/production
+      CORE_LEDGER_SNAPSHOTS_ROOTDIR: /var/hyperledger/production/snapshots
+      CORE_VM_ENDPOINT: ""
+    volumes:
+      - ./.local/crypto/hospital/peer:/crypto:ro
+      - fhir-peer0-hospital:/var/hyperledger/production
+    networks: {horus-fhir-net: {aliases: [fhir-peer0.hospital]}}
+    healthcheck: {<<: *tcp-health, test: [CMD, bash, -c, "echo > /dev/tcp/127.0.0.1/7051"]}
+    mem_limit: 300m
+    restart: unless-stopped
+
+  fhir-peer0-lab:
+    image: hyperledger/fabric-peer:2.5.16
+    container_name: fhir-peer0.lab
+    environment:
+      <<: *peer-env
+      CORE_PEER_ID: fhir-peer0.lab
+      CORE_PEER_ADDRESS: fhir-peer0.lab:7051
+      CORE_PEER_GOSSIP_BOOTSTRAP: fhir-peer0.lab:7051
+      CORE_PEER_GOSSIP_EXTERNALENDPOINT: fhir-peer0.lab:7051
+      CORE_PEER_LOCALMSPID: LabMSP
+    volumes:
+      - ./.local/crypto/lab/peer:/crypto:ro
+      - fhir-peer0-lab:/var/hyperledger/production
+    networks: {horus-fhir-net: {aliases: [fhir-peer0.lab]}}
+    healthcheck: {<<: *tcp-health, test: [CMD, bash, -c, "echo > /dev/tcp/127.0.0.1/7051"]}
+    mem_limit: 300m
+    restart: unless-stopped
+
+  # fhir-abac chaincode (PAP/PIP/PDP) as a service, one copy per organization.
+  # CHAINCODE_ID comes from .local/fabric.json (written by "tools.py deploy-cc").
+  fhir-cc-hospital:
+    image: fhir-abac:0.1.0
+    pull_policy: never
+    container_name: fhir-cc.hospital
+    environment:
+      CHAINCODE_SERVER_ADDRESS: 0.0.0.0:9999
+      CHAINCODE_ID: ${FHIR_CC_ID_HOSPITAL:-not-deployed}
+    networks: {horus-fhir-net: {aliases: [fhir-cc.hospital]}}
+    read_only: true
+    mem_limit: 64m
+    restart: unless-stopped
+
+  fhir-cc-lab:
+    image: fhir-abac:0.1.0
+    pull_policy: never
+    container_name: fhir-cc.lab
+    environment:
+      CHAINCODE_SERVER_ADDRESS: 0.0.0.0:9999
+      CHAINCODE_ID: ${FHIR_CC_ID_LAB:-not-deployed}
+    networks: {horus-fhir-net: {aliases: [fhir-cc.lab]}}
+    read_only: true
+    mem_limit: 64m
+    restart: unless-stopped
+
+  # Internal Fabric Gateway (Go SDK). Holds the wallet (sandbox simplification);
+  # only fhir-api calls it, with a bearer token. No host port.
+  fhir-gateway:
+    image: fhir-gateway:0.1.0
+    pull_policy: never
+    container_name: fhir-gateway
+    environment:
+      WALLET_DIR: /wallet
+      CHANNEL: fhir-channel
+      CHAINCODE: fhir-abac
+      GATEWAY_TOKEN_FILE: /run/secrets/fhir_gateway_token
+    secrets: [fhir_gateway_token]
+    volumes:
+      - ./.local/wallet:/wallet:ro
+      - ./.local/crypto/hospital/public:/tls/hospital:ro
+      - ./.local/crypto/lab/public:/tls/lab:ro
+    networks: [horus-fhir-net]
+    read_only: true
+    mem_limit: 64m
+    restart: unless-stopped
+
+  # The PEP and the only entry point: 127.0.0.1:8099 on the Mac. FHIR and
+  # Fabric stay internal, so the front cannot bypass the PEP.
+  fhir-api:
+    image: fhir-api:0.1.0
+    pull_policy: never
+    container_name: fhir-api
+    environment:
+      FHIR_BASE: http://fhir-hapi:8080/fhir
+      GATEWAY_URL: http://fhir-gateway:8080
+      GATEWAY_TOKEN_FILE: /run/secrets/fhir_gateway_token
+      API_TOKEN_FILE: /run/secrets/fhir_api_token
+    secrets: [fhir_gateway_token, fhir_api_token]
+    ports: ["127.0.0.1:8099:8000"]
+    networks: [horus-fhir-net]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: 200m
+    restart: unless-stopped
+
+  # The HAPI image is distroless (no shell) and runs as UID 65532; this one-shot
+  # step gives that UID the data volume. tools.py checks /fhir/metadata instead
+  # of a healthcheck. No host port: only the PEP (stage 3) will reach it.
+  fhir-hapi-init:
+    image: hyperledger/fabric-tools:2.5.16
+    container_name: fhir-hapi-init
+    command: [bash, -c, "chown -R 65532:65532 /data"]
+    volumes: [fhir-hapi-data:/data]
+    network_mode: none
+    restart: "no"
+
+  fhir-hapi:
+    image: hapiproject/hapi:v8.0.0
+    container_name: fhir-hapi
+    depends_on: {fhir-hapi-init: {condition: service_completed_successfully}}
+    environment:
+      HAPI_FHIR_FHIR_VERSION: R4
+      SPRING_DATASOURCE_URL: "jdbc:h2:file:/data/database/h2"
+      SPRING_DATASOURCE_USERNAME: sa
+      SPRING_DATASOURCE_PASSWORD: ""
+      SPRING_DATASOURCE_DRIVERCLASSNAME: org.h2.Driver
+      SPRING_JPA_PROPERTIES_HIBERNATE_SEARCH_ENABLED: "false"
+      JAVA_TOOL_OPTIONS: "-Xmx768m -XX:+UseSerialGC"
+    volumes: [fhir-hapi-data:/data]
+    networks: {horus-fhir-net: {aliases: [fhir-hapi]}}
+    mem_limit: 1200m
+    restart: unless-stopped
+
+  # Enrollment uses the CA image (fabric-tools has no fabric-ca-client); only "run --rm".
+  fhir-enroll:
+    image: hyperledger/fabric-ca:1.5.22
+    container_name: fhir-enroll
+    profiles: [tools]
+    entrypoint: [bash, /network/scripts/enroll.sh]
+    secrets: [fhir_ca_hospital, fhir_ca_lab]
+    volumes:
+      - ./network:/network:ro
+      - ./.local:/local
+      - fhir-ca-hospital:/ca/hospital:ro
+      - fhir-ca-lab:/ca/lab:ro
+    networks: [horus-fhir-net]
+
+  # Admin console for channel creation and checks; only "run --rm".
+  fhir-tools:
+    image: hyperledger/fabric-tools:2.5.16
+    container_name: fhir-tools
+    profiles: [tools]
+    working_dir: /local
+    environment: {FABRIC_LOGGING_SPEC: WARN}
+    secrets: [fhir_ca_hospital, fhir_ca_lab]
+    volumes:
+      - ./network:/network:ro
+      - ./.local:/local
+      - fhir-ca-hospital:/ca/hospital:ro
+      - fhir-ca-lab:/ca/lab:ro
+    networks: [horus-fhir-net]
+
+secrets:
+  fhir_ca_hospital: {file: ./.local/ca/hospital.password}
+  fhir_ca_lab: {file: ./.local/ca/lab.password}
+  fhir_gateway_token: {file: ./.local/gateway-token}
+  fhir_api_token: {file: ./.local/api-token}
+
+volumes:
+  fhir-ca-hospital: {name: fhir-ca-hospital}
+  fhir-ca-lab: {name: fhir-ca-lab}
+  fhir-orderer0: {name: fhir-orderer0}
+  fhir-peer0-hospital: {name: fhir-peer0-hospital}
+  fhir-peer0-lab: {name: fhir-peer0-lab}
+  fhir-hapi-data: {name: fhir-hapi-data}
+
+networks:
+  horus-fhir-net: {name: horus-fhir-net}

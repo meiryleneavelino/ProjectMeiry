@@ -30,6 +30,20 @@ export default defineConfig({
           });
         },
       },
+      // horus-fhir PEP API (separate module/ledger); token added server-side only.
+      "/fhir-api": {
+        target: "http://127.0.0.1:8099",
+        changeOrigin: true,
+        rewrite: (url) => url.replace(/^\/fhir-api/, ""),
+        configure: (proxy) => {
+          proxy.on("proxyReq", (request) => {
+            try {
+              const token = readFileSync(path.resolve(__dirname, "../horus-fhir/.local/api-token"), "utf8").trim();
+              request.setHeader("Authorization", `Bearer ${token}`);
+            } catch { request.removeHeader("Authorization"); }
+          });
+        },
+      },
       "/training-api": {
         target: "http://127.0.0.1:8096",
         changeOrigin: true,

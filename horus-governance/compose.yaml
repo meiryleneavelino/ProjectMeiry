@@ -1,4 +1,7 @@
 name: horus-governance
+# Only the API runs here. SAST analysis no longer runs on this host: each
+# organization's sast-agent runs it in its own Kubernetes namespace, and no
+# container in this file mounts the Docker socket.
 services:
   api:
     build:
@@ -19,6 +22,9 @@ services:
       HORUS_SETTINGS: /app/config/settings.example.json
       HORUS_TRAINING_URL: http://host.docker.internal:8096/api/v1/ml
       HORUS_TRAINING_TOKEN_FILE: /run/secrets/training-token
+      # Researcher gateway of the Fabric ledger (python3 tools.py ledger forward).
+      HORUS_LEDGER_URL: http://host.docker.internal:8098
+      HORUS_LEDGER_TOKEN_FILE: /state/ledger/gateway-token
     volumes:
       - ./.local:/state
       - ./config/settings.example.json:/app/config/settings.example.json:ro
@@ -34,27 +40,3 @@ services:
       interval: 5s
       timeout: 4s
       retries: 12
-  worker:
-    image: horus-governance:local
-    pull_policy: never
-    container_name: horus-governance-worker
-    user: "${HORUS_UID:-1000}:${HORUS_GID:-1000}"
-    group_add: ["${HORUS_DOCKER_GID:-0}"]
-    command: [python, -m, app.worker]
-    read_only: true
-    cap_drop: [ALL]
-    security_opt: [no-new-privileges:true]
-    tmpfs: ["/tmp:rw,noexec,nosuid,nodev,size=67108864,mode=1777"]
-    mem_limit: 256m
-    pids_limit: 64
-    stop_grace_period: 150s
-    environment:
-      HORUS_STATE_ROOT: /state
-      DOCKER_BIN: /usr/local/bin/docker
-    volumes:
-      - ./.local:/state
-      - ./config/settings.example.json:/app/config/settings.example.json:ro
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      api:
-        condition: service_healthy

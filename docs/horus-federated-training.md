@@ -12,7 +12,10 @@ original em `web/`. A nova interface esta em `horus-sandbox-frontend/`.
 O fluxo integrado ao Horus e horizontal: regressao logistica com FedAvg,
 dados sinteticos locais de UVA, VU e TUDELFT. Integrar a interface ao treinamento
 vertical de energia e implantar esse fluxo no FABRIC ainda sao trabalhos separados.
-As outras telas do Horus continuam usando dados demonstrativos.
+As outras telas do Horus continuam usando dados demonstrativos, exceto a
+validacao de algoritmos e a tela Ledger, que usam o ledger Hyperledger Fabric
+de governanca ([ledger Fabric e SAST local](ledger-fabric-e-sast-local.md)).
+O inicio de treino pela governanca grava `TrainingStarted` nesse ledger.
 
 ## Arquitetura
 

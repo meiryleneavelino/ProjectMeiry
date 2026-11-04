@@ -1,0 +1,177 @@
+{{- $namespaces := list }}
+{{- range $org := .Values.organizations }}{{- $namespaces = append $namespaces $org.namespace }}{{- end }}
+{{- range $org := .Values.organizations }}
+{{- $ns := $org.namespace }}
+---
+# Peers and orderers of the three organizations form the ledger network:
+# gossip/endorsement (7051), ordering and Raft (7050), channel admin (7053).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: horus-ledger-nodes
+  namespace: {{ $ns }}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: horus-ledger/component, operator: In, values: [peer, orderer]}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchExpressions:
+              - {key: kubernetes.io/metadata.name, operator: In, values: {{ toJson $namespaces }}}
+          podSelector:
+            matchExpressions:
+              - {key: horus-ledger/component, operator: In, values: [peer, orderer, admin, agent, gateway]}
+      ports:
+        - {protocol: TCP, port: 7050}
+        - {protocol: TCP, port: 7051}
+        - {protocol: TCP, port: 7053}
+  egress:
+    - to:
+        - namespaceSelector:
+            matchExpressions:
+              - {key: kubernetes.io/metadata.name, operator: In, values: {{ toJson $namespaces }}}
+          podSelector:
+            matchExpressions:
+              - {key: horus-ledger/component, operator: In, values: [peer, orderer]}
+      ports:
+        - {protocol: TCP, port: 7050}
+        - {protocol: TCP, port: 7051}
+    # The peer dials its own organization's chaincode service.
+    - to:
+        - podSelector:
+            matchLabels: {horus-ledger/component: chaincode}
+      ports:
+        - {protocol: TCP, port: 9999}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# The CA is reachable only from the same organization's enrollment Job.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: horus-ledger-ca
+  namespace: {{ $ns }}
+spec:
+  podSelector:
+    matchLabels: {horus-ledger/component: ca}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {horus-ledger/component: enroll}
+      ports:
+        - {protocol: TCP, port: 7054}
+  egress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: horus-ledger-enroll
+  namespace: {{ $ns }}
+spec:
+  podSelector:
+    matchLabels: {horus-ledger/component: enroll}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - podSelector:
+            matchLabels: {horus-ledger/component: ca}
+      ports:
+        - {protocol: TCP, port: 7054}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+# Chaincode accepts connections only from its own organization's peer.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: horus-ledger-chaincode
+  namespace: {{ $ns }}
+spec:
+  podSelector:
+    matchLabels: {horus-ledger/component: chaincode}
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: {horus-ledger/component: peer}
+      ports:
+        - {protocol: TCP, port: 9999}
+  egress: []
+---
+# Clients: the admin console, the SAST agent and (TUDELFT) the researcher
+# gateway. The agent also needs the Kubernetes API to run analysis Jobs.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: horus-ledger-clients
+  namespace: {{ $ns }}
+spec:
+  podSelector:
+    matchExpressions:
+      - {key: horus-ledger/component, operator: In, values: [admin, agent, gateway]}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress:
+    - to:
+        - namespaceSelector:
+            matchExpressions:
+              - {key: kubernetes.io/metadata.name, operator: In, values: {{ toJson $namespaces }}}
+          podSelector:
+            matchExpressions:
+              - {key: horus-ledger/component, operator: In, values: [peer, orderer]}
+      ports:
+        - {protocol: TCP, port: 7050}
+        - {protocol: TCP, port: 7051}
+        - {protocol: TCP, port: 7053}
+    - to:
+        - namespaceSelector:
+            matchLabels: {kubernetes.io/metadata.name: kube-system}
+          podSelector:
+            matchLabels: {k8s-app: kube-dns}
+      ports:
+        - {protocol: UDP, port: 53}
+        - {protocol: TCP, port: 53}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: horus-sast-agent-api
+  namespace: {{ $ns }}
+spec:
+  podSelector:
+    matchLabels: {horus-ledger/component: agent}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - {protocol: TCP, port: 443}
+        - {protocol: TCP, port: 6443}
+---
+# Ephemeral analysis pods: no ingress and no egress at all.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: horus-sast-deny-network
+  namespace: {{ $ns }}
+spec:
+  podSelector:
+    matchLabels: {app: horus-sast}
+  policyTypes: [Ingress, Egress]
+  ingress: []
+  egress: []
+{{- end }}

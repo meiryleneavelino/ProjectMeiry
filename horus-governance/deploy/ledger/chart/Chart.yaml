@@ -1,0 +1,6 @@
+apiVersion: v2
+name: horus-ledger
+description: Hyperledger Fabric governance ledger and organization-local SAST agents for Horus
+type: application
+version: 0.1.0
+appVersion: "2.5.16"

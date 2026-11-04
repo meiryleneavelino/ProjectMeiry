@@ -1,7 +1,6 @@
 import hmac
 import json
 import re
-from time import time
 from typing import Literal
 from uuid import UUID
 
@@ -12,10 +11,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import UploadFile
 
 from sast.contracts import AnalysisError, MAX_CODE_BYTES, validate_filename
-from .ledger import FIELDS
+from .ledger import EVENT_TYPES, LedgerError
 from .service import Governance
 from .settings import Settings
-from .storage import IntegrityError
 from .training_bridge import TrainingBridge, TrainingError
 
 
@@ -66,9 +64,9 @@ class BoundedBody:
         await self.app(scope, replay, send)
 
 
-def create_app(settings=None, transport=None):
+def create_app(settings=None, transport=None, ledger=None):
     settings = settings or Settings.load()
-    governance = Governance(settings)
+    governance = Governance(settings, ledger)
     bridge = TrainingBridge(governance, transport)
     token = settings.token()
     app = FastAPI(title="Horus governance", docs_url=None, redoc_url=None, openapi_url=None)
@@ -92,9 +90,9 @@ def create_app(settings=None, transport=None):
     async def validation_error(request, error):
         return JSONResponse({"detail": "Invalid request fields or values."}, status_code=422)
 
-    @app.exception_handler(IntegrityError)
-    async def integrity_error(request, error):
-        return JSONResponse({"detail": str(error)}, status_code=409)
+    @app.exception_handler(LedgerError)
+    async def ledger_error(request, error):
+        return JSONResponse({"detail": str(error), "kind": error.kind}, status_code=error.status)
 
     @app.exception_handler(AnalysisError)
     async def analysis_error(request, error):
@@ -120,15 +118,20 @@ def create_app(settings=None, transport=None):
     def me():
         return {"name": settings.name, "organization": settings.organization, "pseudonym": settings.pseudonym}
 
+    def ledger_status():
+        try:
+            info = governance.ledger.status()
+        except LedgerError as error:
+            return {"valid": False, "backend": "hyperledger-fabric", "error": str(error)}
+        return {"valid": "config" in info, "backend": info["backend"], "channel": (info.get("config") or {}).get("channel"),
+                "height": info["height"], "current_block_hash": info["current_block_hash"],
+                "previous_block_hash": info["previous_block_hash"], "peer": info["peer"], "msp_id": info["msp_id"],
+                "error": info.get("config_error")}
+
     @app.get("/status")
     def status():
-        verification = governance.ledger.verify()
-        try:
-            heartbeat = json.loads((settings.state_root / "worker-status.json").read_bytes())
-            worker_ready = 0 <= time() - heartbeat["updated_at"] < 180
-        except (OSError, ValueError, KeyError, TypeError):
-            worker_ready = False
-        return {"ledger": verification, "worker_ready": worker_ready, "mode": "local-development", "blockchain": False}
+        ledger = ledger_status()
+        return {"ledger": ledger, "ledger_ready": ledger["valid"], "mode": "local-development", "blockchain": True}
 
     @app.get("/algorithms")
     def algorithms():
@@ -136,9 +139,7 @@ def create_app(settings=None, transport=None):
 
     @app.get("/submissions")
     def submissions():
-        with governance.ledger.transaction() as connection:
-            rows = connection.execute("SELECT code_hash,status,created_at FROM submissions ORDER BY created_at DESC LIMIT 50").fetchall()
-        return [dict(row) for row in rows]
+        return governance.submissions()
 
     @app.post("/submissions")
     async def submit(request: Request):
@@ -176,23 +177,31 @@ def create_app(settings=None, transport=None):
 
     @app.get("/ledger/events")
     def events(event_type: str | None = None, code_hash: str | None = None, offset: int = 0, limit: int = 50):
-        if event_type and event_type not in FIELDS:
+        if event_type and event_type not in EVENT_TYPES:
             raise HTTPException(422, "Unknown event type.")
         if code_hash:
             checked_hash(code_hash)
         if offset < 0 or not 1 <= limit <= 100:
             raise HTTPException(422, "Invalid pagination.")
-        return governance.ledger.events(event_type, code_hash, offset, limit)
+        items = [event for event in governance.ledger.events()
+                 if (not event_type or event["event_type"] == event_type)
+                 and (not code_hash or event["code_hash"] == code_hash)]
+        items.sort(key=lambda event: event["recorded_at"], reverse=True)
+        return {"items": items[offset:offset + limit], "total": len(items), "offset": offset, "limit": limit}
 
     @app.post("/ledger/verify")
     def verify_chain():
-        return governance.ledger.verify()
+        return ledger_status()
 
-    @app.get("/ledger/events/{tx_id}")
-    def event_detail(tx_id: str):
-        if not re.fullmatch(r"local-[0-9a-f]{32}", tx_id):
+    @app.get("/ledger/transactions/{tx_id}")
+    def transaction_detail(tx_id: str):
+        if not re.fullmatch(r"[0-9a-f]{64}", tx_id):
             raise HTTPException(422, "Invalid transaction ID.")
-        return governance.ledger.get(tx_id)
+        detail = governance.ledger.transaction(tx_id)
+        detail["events"] = [event for event in governance.ledger.events() if event["tx_id"] == tx_id]
+        if not detail["events"]:
+            raise LookupError("No governance events in this transaction.")
+        return detail
 
     @app.post("/training/runs", status_code=202)
     def start_training(data: TrainingInput, idempotency_key: str = Header()):

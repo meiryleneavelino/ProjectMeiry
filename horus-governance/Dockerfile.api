@@ -1,11 +1,10 @@
-FROM docker:27-cli AS dockercli
 FROM python:3.11-slim
 WORKDIR /app
 COPY requirements.lock .
 RUN pip install --no-cache-dir -r requirements.lock
-COPY --from=dockercli /usr/local/bin/docker /usr/local/bin/docker
 COPY app ./app
 COPY sast ./sast
 COPY config ./config
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp DOCKER_CONFIG=/tmp/docker
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 HOME=/tmp
+USER 1000:1000
 CMD ["uvicorn", "app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8097"]

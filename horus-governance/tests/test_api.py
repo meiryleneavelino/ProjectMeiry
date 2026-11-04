@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from app.main import create_app
 from app.settings import Settings
-from test_governance import clean_analyzer
+from fake_ledger import FakeLedger
 
 
 class APITests(unittest.TestCase):
@@ -23,8 +23,9 @@ class APITests(unittest.TestCase):
         def training(request):
             self.calls.append(request)
             return httpx.Response(202, json={"id": str(uuid4()), "status": "queued"})
+        self.ledger = FakeLedger()
         self.settings = Settings(root, training_token_file=token)
-        self.app = create_app(self.settings, httpx.MockTransport(training))
+        self.app = create_app(self.settings, httpx.MockTransport(training), self.ledger)
         self.client = TestClient(self.app)
         self.client.headers["Authorization"] = f"Bearer {self.settings.token()}"
 
@@ -36,18 +37,21 @@ class APITests(unittest.TestCase):
         self.assertEqual(response.status_code, 422)
         self.assertEqual(self.client.get("/me", headers={"Origin": "https://untrusted.invalid"}).status_code, 403)
 
-    def test_upload_and_duplicates(self):
+    def test_upload_draw_state_duplicates_and_verification(self):
         response = self.client.post("/submissions", files={"file": ("../example.py", b"value=1\r\n")},
                                     data={"organizations": json.dumps(["UVA", "VU", "TUDELFT"])})
         self.assertEqual(response.status_code, 202, response.text)
         item = response.json()
-        self.assertNotEqual(item["selection"]["reviewer"], "TUDELFT")
+        self.assertEqual(item["status"], "drawing")
+        self.assertIsNone(item["selection"]["reviewer"])
         second = self.client.post("/submissions", json={"code": "value=1\n", "organizations": ["UVA"]})
         self.assertEqual(second.status_code, 200)
         self.assertTrue(second.json()["reused"])
-        self.app.state.governance.work_once(clean_analyzer)
-        self.assertEqual(self.client.get(f"/submissions/{item['code_hash']}").json()["status"], "approved")
+        self.ledger.complete(item["code_hash"], reviewer="VU")
+        result = self.client.get(f"/submissions/{item['code_hash']}").json()
+        self.assertEqual((result["status"], result["provenance"]["organization"]), ("approved", "VU"))
         self.assertTrue(self.client.post(f"/reports/{item['code_hash']}/verify").json()["valid"])
+        self.assertEqual(self.client.get("/submissions").json()[0]["code_hash"], item["code_hash"])
 
     def test_binary_extension_utf8_size_and_no_eligible_reviewer(self):
         for name, content in (("example.py", b"\0binary"), ("example.py", b"\xff"),
@@ -56,6 +60,22 @@ class APITests(unittest.TestCase):
                                         data={"organizations": '["UVA"]'})
             self.assertEqual(response.status_code, 422, response.text)
         self.assertEqual(self.client.post("/submissions", json={"code": "value=1", "organizations": ["TUDELFT"]}).status_code, 422)
+
+    def test_ledger_routes_status_and_errors(self):
+        item = self.client.post("/submissions", json={"code": "value=1\n", "organizations": ["UVA"]}).json()
+        status = self.client.get("/status").json()
+        self.assertTrue(status["blockchain"])
+        self.assertTrue(status["ledger_ready"])
+        self.assertEqual(status["ledger"]["backend"], "hyperledger-fabric")
+        events = self.client.get("/ledger/events", params={"code_hash": item["code_hash"]}).json()
+        self.assertEqual(events["total"], 1)
+        tx_id = events["items"][0]["tx_id"]
+        detail = self.client.get(f"/ledger/transactions/{tx_id}").json()
+        self.assertTrue(detail["valid"])
+        self.assertEqual(detail["events"][0]["event_type"], "CodeSubmitted")
+        self.assertEqual(self.client.get("/ledger/transactions/local-1").status_code, 422)
+        self.assertEqual(self.client.get("/ledger/events", params={"event_type": "Nope"}).status_code, 422)
+        self.assertEqual(self.client.get(f"/submissions/{'0' * 64}").status_code, 404)
 
     def test_new_algorithms_cannot_be_executed_and_start_is_idempotent(self):
         payload = {"algorithm": "submitted-code", "organizations": ["UVA", "TUDELFT"],

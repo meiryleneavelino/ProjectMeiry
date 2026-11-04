@@ -1,102 +1,114 @@
-# Horus governance: SAST, API, catalog and local ledger
+# Horus governance: zero-trust SAST, Fabric ledger, catalog and API
 
-Stages (a) through (d) provide offline Semgrep, server-side reviewer selection,
-persistent deduplication/catalog, a SQLite hash-chain ledger and the Horus UI.
-See the [project structure and testing guide](../docs/governanca-estrutura-e-testes.md).
+Submitted algorithms are analyzed as text and are never executed. Since
+03/11/2026 no single party has to be trusted for that analysis:
 
-For startup of the whole system and end-to-end observation, use the
-[complete Horus guide](../docs/HORUS_GUIA_COMPLETO.md).
+1. The researcher's submission is a transaction on a Hyperledger Fabric
+   channel run by UVA, VU and TUDELFT. The researcher's organization comes
+   from the researcher's X.509 certificate.
+2. The eligible organizations (selected ones minus the researcher's) draw the
+   reviewer together with commit-reveal inside the chaincode.
+3. The drawn organization's `sast-agent` runs Semgrep in an ephemeral,
+   network-less Kubernetes Job **in its own namespace** and records the report
+   signed with its own Fabric identity.
+4. The chaincode accepts the report only from the drawn organization, with the
+   agreed rules, policy, Semgrep version and analyzer image digest, and only if
+   counts, score, decision and reasons match its own recomputation.
+5. The other eligible organizations re-run the deterministic analysis and
+   record an audit; a different report hash marks the submission as disputed.
 
-The training API on 8096 and protected go/, python/, charts/, configuration/
-and fabric/ directories have not been modified by this governance integration.
-Governance is here; frontend changes are in horus-sandbox-frontend/.
+The step-by-step explanation (in Portuguese) is
+[docs/ledger-fabric-e-sast-local.md](../docs/ledger-fabric-e-sast-local.md);
+the complete project guide is [docs/HORUS_GUIA_COMPLETO.md](../docs/HORUS_GUIA_COMPLETO.md).
+The training API (8096) and the protected go/, python/, charts/, configuration/
+and fabric/ directories are not modified by governance.
 
-## Start governance
+## Layout
 
-With Docker Desktop, SAST images and the existing training gateway available,
-run from this directory:
+| Path | Content |
+| --- | --- |
+| `app/` | FastAPI service: input validation, ledger client, catalog, training bridge. |
+| `ledger/` | Go module, one binary with three modes: `chaincode`, `agent`, `gateway`. |
+| `ledger/governance/` | Chaincode rules (pure Go, tested in memory). |
+| `ledger/internal/agent/` | Organization-local SAST agent and its Kubernetes Job runner. |
+| `ledger/internal/httpgw/` | Researcher gateway used by the Python API. |
+| `deploy/ledger/` | Helm chart and idempotent `setup.py` for the Fabric network. |
+| `sast/` | Rules, policy contracts, the analyzer (runs inside the Job), image build and operator CLI runner. |
+| `config/` | Policy, organizations (image, namespace, MSP), displayed identity. |
+| `tests/` | Python tests with an in-memory ledger stand-in, plus gated SAST and live tests. |
+
+## Start
+
+Prerequisites: Docker Desktop, the `dynamos-dev` tools container and the
+`kind-scattered-training` cluster from the training setup.
 
 ```bash
-python3 tools.py build
-python3 tools.py start
-python3 tools.py status
+python3 tools.py build                     # analyzer images
+python3 tools.py ledger setup              # Fabric network, chaincode, agents, gateway
+python3 tools.py ledger forward --background   # gateway on 127.0.0.1:8098
+python3 tools.py start                     # API on 127.0.0.1:8097
+python3 tools.py ledger verify             # same height, hash and config on all peers
 ```
 
-The API binds localhost:8097. The existing Vite server on 5175 injects its
-local token for /governance-api. Only the trusted worker has a Docker socket.
-Both services share .local/ and use the launcher user's UID/GID. On Linux,
-Docker socket group access is configurable via HORUS_DOCKER_GID.
-`python3 tools.py stop` stops governance without deleting persistent files.
+`ledger setup` is idempotent; `--skip-build` reuses existing images.
+`ledger down` removes the ledger Pods and keeps data; `ledger down --purge`
+deletes the ledger history and identities. `tools.py start` only starts the
+API; no governance container mounts the Docker socket any more
+(`--remove-orphans` removes the old worker container).
 
-The API reads the existing training token through a read-only mount. It starts
-the built-in through an authenticated bridge; status/cancel/download continue
-through the existing training proxy. Direct clients of 8096 are not audited
-automatically by this local ledger. Configure server identity in
-config/settings.example.json and restart governance after editing it.
-This is a local bearer-token sandbox, not multi-user production login.
+The API reads the training token read-only and the gateway token from
+`.local/ledger/gateway-token`. This is a local bearer-token sandbox, not
+multi-user production login. The researcher's Fabric key lives in the gateway
+Pod in the `tudelft` namespace (sandbox simplification).
 
-## Run locally
+## Analysis isolation (Kubernetes Job)
 
-Docker Desktop and Python 3.10+ are required. The host runner uses only the
-Python standard library; no host Semgrep installation is required.
-From the Scattered-Directive directory:
+| Control | Value |
+| --- | --- |
+| Where | Namespace of the drawn organization, created by that organization's agent. |
+| Network | NetworkPolicy with no ingress and no egress (no DNS, no API server). |
+| User | UID/GID 20001, used by no other workload. |
+| Processes | `ulimit -u 128` (per UID, hence the dedicated UID). |
+| Filesystem | Read-only root, in-memory `/tmp` (128 MiB), read-only input. |
+| Privileges | All capabilities dropped, no privilege escalation, seccomp RuntimeDefault, PodSecurity `restricted`. |
+| Resources | 1 CPU, 768 MiB, 150 s deadline, no retries. |
+| Credentials | No service-account token, Secrets, datasets or Docker socket. |
+| Image | `imagePullPolicy: Never`; the digest reported by the kubelet must be the agreed one. |
+| Cleanup | Job and ConfigMap deleted by the agent; TTL as a fallback. |
+
+The agent's Role allows only ConfigMaps, Jobs and reading Pod logs in its own
+namespace. Submissions are limited to 900 KiB so the code fits one ConfigMap.
+
+## Operator CLI analysis (outside the ledger)
+
+`tools.py analyze` still runs the analyzer image in local Docker for operator
+checks (for example, comparing the three organization images). It records
+nothing on the ledger.
 
 ```bash
-cd horus-governance
-python3 tools.py build
 python3 tools.py analyze --organization UVA --file examples/clean.py
 python3 tools.py analyze --organization VU --file examples/unsafe.py
 ```
 
-Expected: clean.py is approved with score 100 and no findings. unsafe.py is
-rejected with score 0, detecting eval, pickle.loads, subprocess, a network
-import and a deliberately fake token. Do not execute or import unsafe.py.
-Only submit it to tools.py, which treats it as text.
+Expected: clean.py approved with score 100 and no findings; unsafe.py
+rejected with score 0 (eval, pickle.loads, subprocess, a network import and a
+deliberately fake token). Do not execute or import unsafe.py. Exit status 0
+means the analysis completed, even if rejected; errors exit with 2.
 
-To analyze pasted text from stdin:
+## Images and agreed configuration
 
-```bash
-python3 tools.py analyze --organization UVA --stdin
-```
+The build produces `horus-sast-base:local` and one image per organization
+(`horus-sast-uva|vu|tudelft:local`, differing only in `HORUS_ORGANIZATION`).
+Semgrep 1.145.0 is pinned by OCI digest; no remote rules are fetched during
+analysis. `ledger/Dockerfile` builds `horus-ledger:local` and runs the Go tests.
 
-Paste Python text, then finish input with Ctrl+D. Files must end in .py or
-.txt. Invalid UTF-8, binary control characters, empty/whitespace-only input,
-invalid Python syntax, and inputs over 1,048,576 bytes are rejected. The
-scanner uses a generated temporary directory and a fixed submission.py name;
-the original filename is never mounted or executed inside the container.
-Changing only CRLF/CR line endings to LF does not change the normalized hash.
-Other whitespace is preserved. UTF-8 BOM is not normalized away and can fail
-the Python syntax check.
-
-Successful analysis has exit status 0 even when the policy decision is
-rejected; read report.decision. Infrastructure/input/parse errors have exit
-status 2 and no approval. Do not infer approval solely from process exit code.
-
-## Images and configuration
-
-The build produces:
-
-- horus-sast-base:local: common analyzer, local rules and standard policy.
-- horus-sast-uva:local: UVA organization identity.
-- horus-sast-vu:local: VU organization identity.
-- horus-sast-tudelft:local: TUDELFT organization identity.
-
-The base pins Semgrep 1.145.0 by multi-platform OCI digest, supporting native
-arm64 and amd64. No remote rules or registry configuration is fetched during
-analysis. Initial Docker image downloads require internet at build time.
-Semgrep metrics and version checks are disabled. Suppression comments such as
-nosemgrep do not suppress the governance findings.
-
-config/organizations.json maps organizations to images and future namespaces.
-The CLI allows explicit analyzer selection for operator tests only. The API
-performs the reviewer lottery and researcher-organization exclusion on the
-server. The frontend cannot choose the reviewer or override identity.
-Submitted algorithms may enter the catalog but cannot be executed.
-
-config/policy.json is shared by all organizations. sast/rules.yaml is a local
-Semgrep configuration stored in JSON syntax (also valid YAML), so both the
-trusted analyzer and Semgrep read precisely the same rule definitions.
-Rebuild all images after changing policy, rules, or analyzer code.
+`ledger setup` writes the agreed configuration to
+`.local/ledger/governance.json` and to a ConfigMap in every organization:
+members and MSPs, `rules_hash`, `policy_hash`, Semgrep version, each
+organization's analyzer image digest, rule severities/messages, policy and the
+600 s draw timeout. Rebuilding analyzer images changes their digests and
+therefore the configuration; the ledger refuses a different configuration
+(sandbox: `ledger down --purge` and `ledger setup`).
 
 ## Rules and policy
 
@@ -112,113 +124,43 @@ Rebuild all images after changing policy, rules, or analyzer code.
 | horus.hardcoded-secret | high | Credential-like assignments/dictionary fields with nonempty literal values. |
 
 Score is max(0, 100 - 25*high - 10*medium - 2*low). Approval requires zero
-high findings and score >=70. Low-severity counts are supported; the current
-rule set uses high and medium. A medium finding alone does not necessarily
-reject the script. Fixed messages never include matched credential values.
+high findings and score >= 70. Suppression comments such as nosemgrep do not
+suppress the governance findings. Static analysis is not proof of safety.
 
-Static analysis is not proof of safety: Python reflection, obfuscation,
-indirect calls, external dependencies and dynamic destinations can evade
-these rules or yield conservative false positives. A 100 score means no
-findings under this exact rule set, not permission to execute outside a
-future reviewed sandbox. No submitted dependency is imported or installed.
+## Report
 
-## Isolation
+The analyzer prints a canonical-JSON envelope: `report` (schema version,
+code/rules/policy hashes, Semgrep version, score, counts, sorted findings with
+fixed messages, decision, reasons), `report_hash` and `provenance`. The report
+contains no timestamps, paths, snippets or organization identity, so all three
+organization images produce the same `report_hash` for the same input. That
+determinism is what makes audits by re-execution possible. The agent hashes
+the raw `report` bytes exactly as printed; nothing is re-serialized.
 
-tools.py creates one temporary container and removes it in a finally block.
-It inspects and executes the immutable image ID, not a mutable tag selected
-after launch. No submitted host file/directory, dataset or socket is mounted.
-
-- --network none; no analysis service ports.
-- Non-root UID/GID 10001, read-only root filesystem.
-- All capabilities dropped, no-new-privileges enabled.
-- 768 MiB memory, no additional swap, one CPU, at most 128 processes.
-- /tmp tmpfs: 128 MiB, noexec, nosuid and nodev.
-- Scanner subprocess timeout and outer container deadline; errors fail closed.
-
-The only subprocesses launched for submitted text are the trusted Semgrep
-binary and its static-analysis engine. A trusted ast.parse syntax check
-creates an AST, never a running user program. No eval/exec/import of submitted
-code occurs. The Python interpreter runs isolated from user import paths.
-Do not mount the Docker socket inside an analyzer; any future worker with
-Docker access remains a trusted, privileged operational boundary.
-
-The Kubernetes template and its unimplemented controls are described in
-[deploy/kubernetes/README.md](deploy/kubernetes/README.md). It was not applied.
-
-## Report and image provenance
-
-stdout contains a JSON envelope:
-
-```json
-{
-  "report": {
-    "schema_version": 1,
-    "code_hash": "sha256",
-    "rules_hash": "sha256-of-exact-rules-bytes",
-    "policy_hash": "sha256-of-canonical-policy",
-    "semgrep_version": "1.145.0",
-    "score": 100,
-    "counts": {"high": 0, "medium": 0, "low": 0},
-    "findings": [],
-    "decision": "approved",
-    "reasons": ["No high-severity findings and security score meets policy."]
-  },
-  "report_hash": "sha256-of-canonical-report",
-  "provenance": {
-    "organization": "UVA",
-    "image": "horus-sast-uva:local",
-    "image_id": "sha256:local-docker-image-id",
-    "repository_digests": [],
-    "digest": "sha256:digest",
-    "digest_kind": "docker_image_id"
-  }
-}
-```
-
-Each finding has rule_id, line, column, severity and a fixed message. Findings
-are sorted by line, column, rule ID, severity and message. The report contains
-no timestamps, temporary paths, snippets, organization or image identity.
-The report hash excludes provenance, so different organization images produce
-the same report/hash for the same normalized text/rules/policy/engine.
-
-Canonical JSON uses sorted keys, compact separators, UTF-8, no ASCII escaping
-and no NaN/Infinity. Report hashes have no sha256: prefix. When a repository
-digest is available it is recorded; otherwise the local Docker image
-ID is explicitly labeled docker_image_id, not misrepresented as a
-registry manifest digest. Provenance is intended for future ledger events.
-
-verify_report(report, expected_hash) detects changes relative to a trusted
-expected hash. The API compares the stored report against CodeAnalyzed in the
-verified local ledger. No Besu/blockchain backend has been activated.
-
-The persistent API deduplicates normalized code hashes, including concurrent
-queued/running requests. Re-running the operator CLI deliberately starts a
-fresh analysis for determinism tests; it does not register catalog entries.
-
-## Tests and acceptance gate
+## Tests
 
 ```bash
-python3 -m unittest discover -s tests -p test_sast.py -v
-HORUS_SAST_DOCKER_TESTS=1 python3 -m unittest discover -s tests -p test_sast.py -v
-```
-
-The first command runs contract tests and explicitly skips Docker tests.
-The second runs all tests against real offline Semgrep containers after
-tools.py build. Tests cover binary/UTF-8/size rejection, normalization,
-scoring, tampered reports, all required categories, selected aliases,
-redaction, suppression resistance, safe YAML/static /tmp destinations,
-traversal, invalid syntax, non-execution, effective Docker isolation and
-identical reports from all three organizations for both supplied examples.
-
-To run all backend tests:
-
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.lock
+(cd ledger && go test ./...)
+python3 -m venv .venv && .venv/bin/pip install -r requirements.lock
+.venv/bin/python -m unittest discover -s tests -v
 HORUS_SAST_DOCKER_TESTS=1 .venv/bin/python -m unittest discover -s tests -v
+HORUS_GOV_LIVE_TESTS=1 .venv/bin/python -m unittest tests.test_live -v
 ```
 
-Set HORUS_GOV_LIVE_TESTS=1 to include tests against the running API/worker/Vite.
-Set HORUS_GOV_LIVE_TRAINING=1 only to request a real three-round Kubernetes run.
-Ledger tampering tests use temporary databases, never the active ledger.
-Local tx_id values are not blockchain transaction hashes.
+Go tests cover the chaincode rules, three agents against the real chaincode in
+memory (including a dishonest reviewer caught by the audit and a retried
+infrastructure failure) and the gateway. Python tests use `tests/fake_ledger.py`.
+The live test needs the ledger, the gateway forward, the API and Vite (or
+`HORUS_GOV_LIVE_API`/`HORUS_GOV_LIVE_TOKEN` to call an API directly). Set
+`HORUS_GOV_LIVE_TRAINING=1` only to request a real three-round Kubernetes run.
+
+## Known limits
+
+All three organizations share one kind cluster administered by one person;
+the design is the production one, real isolation needs one cluster per
+organization. Raft orderers tolerate crashes, not malice; MAJORITY endorsement
+with three organizations does not stop a two-organization collusion. A
+signature proves who recorded a report, not that Semgrep ran; audits cover
+that when another honest eligible organization exists. Previous SQLite ledger
+events were not migrated. See section 11 of the ledger document for the full
+list.

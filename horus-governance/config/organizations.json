@@ -1,5 +1,5 @@
 {
-  "UVA": {"image": "horus-sast-uva:local", "namespace": "uva"},
-  "VU": {"image": "horus-sast-vu:local", "namespace": "vu"},
-  "TUDELFT": {"image": "horus-sast-tudelft:local", "namespace": "tudelft"}
+  "UVA": {"image": "horus-sast-uva:local", "namespace": "uva", "msp": "UvaMSP"},
+  "VU": {"image": "horus-sast-vu:local", "namespace": "vu", "msp": "VuMSP"},
+  "TUDELFT": {"image": "horus-sast-tudelft:local", "namespace": "tudelft", "msp": "TudelftMSP"}
 }

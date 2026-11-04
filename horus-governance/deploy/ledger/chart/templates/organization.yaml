@@ -1,0 +1,557 @@
+{{- range $org := .Values.organizations }}
+{{- $ns := $org.namespace }}
+{{- $peerHost := printf "peer0.%s.svc.cluster.local" $ns }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: horus-ledger-scripts
+  namespace: {{ $ns }}
+data:
+  enroll.sh: |
+{{ $.Files.Get "files/enroll.sh" | indent 4 }}
+{{- if $.Values.governanceConfig }}
+---
+# The configuration this organization agreed to. Its chaincode refuses any
+# other value in InitConfig and its agent refuses to work if the ledger differs.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: horus-ledger-config
+  namespace: {{ $ns }}
+data:
+  governance.json: {{ $.Values.governanceConfig | quote }}
+{{- end }}
+{{- range $claim := list (dict "name" "ledger-ca" "size" "100Mi") (dict "name" "ledger-crypto" "size" "50Mi") (dict "name" "ledger-peer-data" "size" "1Gi") (dict "name" "ledger-orderer-data" "size" "1Gi") (dict "name" "ledger-agent-state" "size" "20Mi") }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $claim.name }}
+  namespace: {{ $ns }}
+  annotations:
+    # Keep identities and ledger data if the release is uninstalled.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ $claim.size }}
+{{- end }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger-ca
+  namespace: {{ $ns }}
+  labels: {app: horus-ledger, horus-ledger/component: ca}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: horus-ledger, horus-ledger/component: ca}
+  template:
+    metadata:
+      labels: {app: horus-ledger, horus-ledger/component: ca}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "ledger.security" . | nindent 6 }}
+      containers:
+        - name: ca
+          image: {{ $.Values.images.ca }}
+          imagePullPolicy: Never
+          command: [sh, -c, 'exec fabric-ca-server start -b "admin:${CA_ADMIN_PASSWORD}"']
+          {{- include "ledger.container" . | nindent 10 }}
+          env:
+            - {name: FABRIC_CA_HOME, value: /var/hyperledger/fabric-ca}
+            - {name: FABRIC_CA_SERVER_CA_NAME, value: "ca-{{ lower $org.name }}"}
+            - {name: FABRIC_CA_SERVER_PORT, value: "7054"}
+            - {name: FABRIC_CA_SERVER_TLS_ENABLED, value: "true"}
+            - {name: FABRIC_CA_SERVER_CSR_CN, value: "ca.{{ $ns }}"}
+            - {name: FABRIC_CA_SERVER_CSR_HOSTS, value: "ca,ca.{{ $ns }},ca.{{ $ns }}.svc,ca.{{ $ns }}.svc.cluster.local,localhost"}
+            - {name: FABRIC_CA_SERVER_OPERATIONS_LISTENADDRESS, value: "127.0.0.1:9443"}
+            - name: CA_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: ledger-ca-bootstrap, key: password}
+          ports:
+            - {containerPort: 7054, name: ca}
+          readinessProbe:
+            tcpSocket: {port: 7054}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 20m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - {name: home, mountPath: /var/hyperledger/fabric-ca}
+      volumes:
+        - name: home
+          persistentVolumeClaim: {claimName: ledger-ca}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ca
+  namespace: {{ $ns }}
+spec:
+  selector: {app: horus-ledger, horus-ledger/component: ca}
+  ports:
+    - {name: ca, port: 7054, targetPort: 7054}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ledger-enroll
+  namespace: {{ $ns }}
+  labels: {app: horus-ledger, horus-ledger/component: enroll}
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels: {app: horus-ledger, horus-ledger/component: enroll}
+    spec:
+      automountServiceAccountToken: false
+      restartPolicy: OnFailure
+      {{- include "ledger.security" . | nindent 6 }}
+      containers:
+        - name: enroll
+          image: {{ $.Values.images.ca }}
+          imagePullPolicy: Never
+          command: [bash, /scripts/enroll.sh]
+          {{- include "ledger.container" . | nindent 10 }}
+          env:
+            - {name: ORGANIZATION, value: {{ $org.name }}}
+            - {name: NAMESPACE, value: {{ $ns }}}
+            - {name: RESEARCHER, value: {{ $org.researcher | quote }}}
+            - name: CA_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: ledger-ca-bootstrap, key: password}
+          volumeMounts:
+            - {name: scripts, mountPath: /scripts, readOnly: true}
+            - {name: ca-home, mountPath: /ca-home, readOnly: true}
+            - {name: crypto, mountPath: /crypto}
+      volumes:
+        - name: scripts
+          configMap: {name: horus-ledger-scripts}
+        - name: ca-home
+          persistentVolumeClaim: {claimName: ledger-ca, readOnly: true}
+        - name: crypto
+          persistentVolumeClaim: {claimName: ledger-crypto}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: orderer0
+  namespace: {{ $ns }}
+  labels: {app: horus-ledger, horus-ledger/component: orderer}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: horus-ledger, horus-ledger/component: orderer}
+  template:
+    metadata:
+      labels: {app: horus-ledger, horus-ledger/component: orderer}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "ledger.security" . | nindent 6 }}
+      initContainers:
+        {{- include "ledger.waitCrypto" (dict "image" $.Values.images.orderer) | nindent 8 }}
+      containers:
+        - name: orderer
+          image: {{ $.Values.images.orderer }}
+          imagePullPolicy: Never
+          {{- include "ledger.container" . | nindent 10 }}
+          env:
+            - {name: FABRIC_LOGGING_SPEC, value: INFO}
+            - {name: ORDERER_GENERAL_LISTENADDRESS, value: 0.0.0.0}
+            - {name: ORDERER_GENERAL_LISTENPORT, value: "7050"}
+            - {name: ORDERER_GENERAL_LOCALMSPID, value: {{ $org.msp }}}
+            - {name: ORDERER_GENERAL_LOCALMSPDIR, value: /crypto/orderer/msp}
+            - {name: ORDERER_GENERAL_TLS_ENABLED, value: "true"}
+            - {name: ORDERER_GENERAL_TLS_PRIVATEKEY, value: /crypto/orderer/tls/server.key}
+            - {name: ORDERER_GENERAL_TLS_CERTIFICATE, value: /crypto/orderer/tls/server.crt}
+            - {name: ORDERER_GENERAL_TLS_ROOTCAS, value: "[/crypto/orderer/tls/ca.crt]"}
+            - {name: ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE, value: /crypto/orderer/tls/server.crt}
+            - {name: ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY, value: /crypto/orderer/tls/server.key}
+            - {name: ORDERER_GENERAL_CLUSTER_ROOTCAS, value: "[/crypto/orderer/tls/ca.crt]"}
+            - {name: ORDERER_GENERAL_BOOTSTRAPMETHOD, value: none}
+            - {name: ORDERER_CHANNELPARTICIPATION_ENABLED, value: "true"}
+            - {name: ORDERER_ADMIN_LISTENADDRESS, value: "0.0.0.0:7053"}
+            - {name: ORDERER_ADMIN_TLS_ENABLED, value: "true"}
+            - {name: ORDERER_ADMIN_TLS_CERTIFICATE, value: /crypto/orderer/tls/server.crt}
+            - {name: ORDERER_ADMIN_TLS_PRIVATEKEY, value: /crypto/orderer/tls/server.key}
+            - {name: ORDERER_ADMIN_TLS_ROOTCAS, value: "[/crypto/orderer/tls/ca.crt]"}
+            - {name: ORDERER_ADMIN_TLS_CLIENTAUTHREQUIRED, value: "true"}
+            - {name: ORDERER_ADMIN_TLS_CLIENTROOTCAS, value: "[/crypto/orderer/tls/ca.crt]"}
+            - {name: ORDERER_FILELEDGER_LOCATION, value: /var/hyperledger/production/orderer}
+            - {name: ORDERER_CONSENSUS_WALDIR, value: /var/hyperledger/production/orderer/etcdraft/wal}
+            - {name: ORDERER_CONSENSUS_SNAPDIR, value: /var/hyperledger/production/orderer/etcdraft/snapshot}
+            - {name: ORDERER_OPERATIONS_LISTENADDRESS, value: "0.0.0.0:9443"}
+            - {name: ORDERER_METRICS_PROVIDER, value: prometheus}
+          ports:
+            - {containerPort: 7050, name: orderer}
+            - {containerPort: 7053, name: admin}
+            - {containerPort: 9443, name: operations}
+          readinessProbe:
+            httpGet: {path: /healthz, port: 9443}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 64Mi}
+            limits: {memory: 384Mi}
+          volumeMounts:
+            # Only the orderer's own identity, not the admin's or the agent's.
+            - {name: crypto, mountPath: /crypto/orderer, subPath: orderer, readOnly: true}
+            - {name: data, mountPath: /var/hyperledger/production}
+      volumes:
+        - name: crypto
+          persistentVolumeClaim: {claimName: ledger-crypto, readOnly: true}
+        - name: data
+          persistentVolumeClaim: {claimName: ledger-orderer-data}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: orderer0
+  namespace: {{ $ns }}
+spec:
+  selector: {app: horus-ledger, horus-ledger/component: orderer}
+  ports:
+    - {name: orderer, port: 7050, targetPort: 7050}
+    - {name: admin, port: 7053, targetPort: 7053}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: peer0
+  namespace: {{ $ns }}
+  labels: {app: horus-ledger, horus-ledger/component: peer}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: horus-ledger, horus-ledger/component: peer}
+  template:
+    metadata:
+      labels: {app: horus-ledger, horus-ledger/component: peer}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "ledger.security" . | nindent 6 }}
+      initContainers:
+        {{- include "ledger.waitCrypto" (dict "image" $.Values.images.peer) | nindent 8 }}
+      containers:
+        - name: peer
+          image: {{ $.Values.images.peer }}
+          imagePullPolicy: Never
+          {{- include "ledger.container" . | nindent 10 }}
+          env:
+            - {name: FABRIC_LOGGING_SPEC, value: "INFO:gossip=WARN"}
+            - {name: CORE_PEER_ID, value: "peer0.{{ $ns }}"}
+            - {name: CORE_PEER_ADDRESS, value: "{{ $peerHost }}:7051"}
+            - {name: CORE_PEER_LISTENADDRESS, value: "0.0.0.0:7051"}
+            - {name: CORE_PEER_CHAINCODELISTENADDRESS, value: "0.0.0.0:7052"}
+            - {name: CORE_PEER_GOSSIP_BOOTSTRAP, value: "{{ $peerHost }}:7051"}
+            - {name: CORE_PEER_GOSSIP_EXTERNALENDPOINT, value: "{{ $peerHost }}:7051"}
+            - {name: CORE_PEER_LOCALMSPID, value: {{ $org.msp }}}
+            - {name: CORE_PEER_MSPCONFIGPATH, value: /crypto/peer/msp}
+            - {name: CORE_PEER_TLS_ENABLED, value: "true"}
+            - {name: CORE_PEER_TLS_CERT_FILE, value: /crypto/peer/tls/server.crt}
+            - {name: CORE_PEER_TLS_KEY_FILE, value: /crypto/peer/tls/server.key}
+            - {name: CORE_PEER_TLS_ROOTCERT_FILE, value: /crypto/peer/tls/ca.crt}
+            - {name: CORE_PEER_FILESYSTEMPATH, value: /var/hyperledger/production}
+            - {name: CORE_LEDGER_SNAPSHOTS_ROOTDIR, value: /var/hyperledger/production/snapshots}
+            - {name: CORE_OPERATIONS_LISTENADDRESS, value: "0.0.0.0:9443"}
+            - {name: CORE_METRICS_PROVIDER, value: prometheus}
+          ports:
+            - {containerPort: 7051, name: peer}
+            - {containerPort: 9443, name: operations}
+          # /healthz also checks a Docker daemon; chaincode runs as a service
+          # here, so there is no Docker and readiness uses the peer port.
+          readinessProbe:
+            tcpSocket: {port: 7051}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 50m, memory: 96Mi}
+            limits: {memory: 512Mi}
+          volumeMounts:
+            - {name: crypto, mountPath: /crypto/peer, subPath: peer, readOnly: true}
+            - {name: data, mountPath: /var/hyperledger/production}
+      volumes:
+        - name: crypto
+          persistentVolumeClaim: {claimName: ledger-crypto, readOnly: true}
+        - name: data
+          persistentVolumeClaim: {claimName: ledger-peer-data}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: peer0
+  namespace: {{ $ns }}
+spec:
+  selector: {app: horus-ledger, horus-ledger/component: peer}
+  ports:
+    - {name: peer, port: 7051, targetPort: 7051}
+---
+# The organization's administrator console: joins its orderer and peer to the
+# channel and approves the chaincode definition with the organization's admin key.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ledger-admin
+  namespace: {{ $ns }}
+  labels: {app: horus-ledger, horus-ledger/component: admin}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: horus-ledger, horus-ledger/component: admin}
+  template:
+    metadata:
+      labels: {app: horus-ledger, horus-ledger/component: admin}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "ledger.security" . | nindent 6 }}
+      initContainers:
+        {{- include "ledger.waitCrypto" (dict "image" $.Values.images.tools) | nindent 8 }}
+      containers:
+        - name: admin
+          image: {{ $.Values.images.tools }}
+          imagePullPolicy: Never
+          command: [sh, -c, "trap 'exit 0' TERM; sleep infinity & wait"]
+          {{- include "ledger.container" . | nindent 10 }}
+          env:
+            - {name: HOME, value: /work}
+            - {name: ORGANIZATION, value: {{ $org.name }}}
+            - {name: NAMESPACE, value: {{ $ns }}}
+            - {name: CORE_PEER_LOCALMSPID, value: {{ $org.msp }}}
+            - {name: CORE_PEER_MSPCONFIGPATH, value: /crypto/admin/msp}
+            - {name: CORE_PEER_ADDRESS, value: "{{ $peerHost }}:7051"}
+            - {name: CORE_PEER_TLS_ENABLED, value: "true"}
+            - {name: CORE_PEER_TLS_ROOTCERT_FILE, value: /crypto/public/msp/tlscacerts/ca.pem}
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 256Mi}
+          volumeMounts:
+            - {name: crypto, mountPath: /crypto/admin, subPath: admin, readOnly: true}
+            - {name: crypto, mountPath: /crypto/public, subPath: public, readOnly: true}
+            - {name: work, mountPath: /work}
+      volumes:
+        - name: crypto
+          persistentVolumeClaim: {claimName: ledger-crypto, readOnly: true}
+        - name: work
+          emptyDir: {sizeLimit: 64Mi}
+{{- $chaincodeId := get $.Values.chaincodeIds $org.name }}
+{{- if and $chaincodeId $.Values.governanceConfig }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: horus-chaincode
+  namespace: {{ $ns }}
+  labels: {app: horus-ledger, horus-ledger/component: chaincode}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: horus-ledger, horus-ledger/component: chaincode}
+  template:
+    metadata:
+      labels: {app: horus-ledger, horus-ledger/component: chaincode}
+      annotations:
+        horus-ledger/config-checksum: {{ $.Values.governanceConfig | sha256sum }}
+        horus-ledger/image-id: {{ $.Values.ledgerImageId | quote }}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "ledger.security" . | nindent 6 }}
+      containers:
+        - name: chaincode
+          image: {{ $.Values.images.ledger }}
+          imagePullPolicy: Never
+          args: [chaincode]
+          {{- include "ledger.container" . | nindent 10 }}
+          env:
+            - {name: CHAINCODE_SERVER_ADDRESS, value: "0.0.0.0:9999"}
+            - {name: CHAINCODE_ID, value: {{ $chaincodeId | quote }}}
+            - {name: HORUS_CONFIG, value: /config/governance.json}
+          ports:
+            - {containerPort: 9999, name: chaincode}
+          readinessProbe:
+            tcpSocket: {port: 9999}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 10m, memory: 16Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - {name: config, mountPath: /config, readOnly: true}
+      volumes:
+        - name: config
+          configMap: {name: horus-ledger-config}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: horus-chaincode
+  namespace: {{ $ns }}
+spec:
+  selector: {app: horus-ledger, horus-ledger/component: chaincode}
+  ports:
+    - {name: chaincode, port: 9999, targetPort: 9999}
+{{- end }}
+{{- if and $.Values.agents.enabled $.Values.governanceConfig }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: horus-sast-agent
+  namespace: {{ $ns }}
+---
+# The agent may only manage analysis inputs/Jobs and read their logs in its
+# own namespace. No Secrets, no Deployments, nothing in other namespaces.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: horus-sast-agent
+  namespace: {{ $ns }}
+rules:
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create, delete]
+  - apiGroups: [batch]
+    resources: [jobs]
+    verbs: [create, get, delete]
+  - apiGroups: [""]
+    resources: [pods]
+    verbs: [list, get]
+  - apiGroups: [""]
+    resources: [pods/log]
+    verbs: [get]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: horus-sast-agent
+  namespace: {{ $ns }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: horus-sast-agent
+subjects:
+  - kind: ServiceAccount
+    name: horus-sast-agent
+    namespace: {{ $ns }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: horus-sast-agent
+  namespace: {{ $ns }}
+  labels: {app: horus-ledger, horus-ledger/component: agent}
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app: horus-ledger, horus-ledger/component: agent}
+  template:
+    metadata:
+      labels: {app: horus-ledger, horus-ledger/component: agent}
+      annotations:
+        horus-ledger/config-checksum: {{ $.Values.governanceConfig | sha256sum }}
+        horus-ledger/image-id: {{ $.Values.ledgerImageId | quote }}
+    spec:
+      serviceAccountName: horus-sast-agent
+      {{- include "ledger.security" . | nindent 6 }}
+      containers:
+        - name: agent
+          image: {{ $.Values.images.ledger }}
+          imagePullPolicy: Never
+          args: [agent]
+          {{- include "ledger.container" . | nindent 10 }}
+          env:
+            - {name: ORGANIZATION, value: {{ $org.name }}}
+            - {name: NAMESPACE, value: {{ $ns }}}
+            - {name: MSP_ID, value: {{ $org.msp }}}
+            - {name: PEER_ENDPOINT, value: "{{ $peerHost }}:7051"}
+            - {name: PEER_TLS_ROOT, value: /tls/tlscacerts/ca.pem}
+            - {name: IDENTITY_DIR, value: /identity/msp}
+            - {name: CHANNEL, value: {{ $.Values.channel }}}
+            - {name: CHAINCODE, value: {{ $.Values.chaincode }}}
+            - {name: HORUS_CONFIG, value: /config/governance.json}
+            - {name: ANALYZER_IMAGE, value: {{ $org.analyzerImage }}}
+            - {name: STATE_DIR, value: /state}
+            - {name: AUDIT_ENABLED, value: {{ $.Values.agents.audit | quote }}}
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - {name: crypto, mountPath: /identity, subPath: agent, readOnly: true}
+            - {name: crypto, mountPath: /tls, subPath: public/msp, readOnly: true}
+            - {name: config, mountPath: /config, readOnly: true}
+            - {name: state, mountPath: /state}
+      volumes:
+        - name: crypto
+          persistentVolumeClaim: {claimName: ledger-crypto, readOnly: true}
+        - name: config
+          configMap: {name: horus-ledger-config}
+        - name: state
+          persistentVolumeClaim: {claimName: ledger-agent-state}
+{{- end }}
+{{- if and $.Values.gateway.enabled $org.researcher }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: horus-ledger-gateway
+  namespace: {{ $ns }}
+  labels: {app: horus-ledger, horus-ledger/component: gateway}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: horus-ledger, horus-ledger/component: gateway}
+  template:
+    metadata:
+      labels: {app: horus-ledger, horus-ledger/component: gateway}
+      annotations:
+        horus-ledger/image-id: {{ $.Values.ledgerImageId | quote }}
+    spec:
+      automountServiceAccountToken: false
+      {{- include "ledger.security" . | nindent 6 }}
+      containers:
+        - name: gateway
+          image: {{ $.Values.images.ledger }}
+          imagePullPolicy: Never
+          args: [gateway]
+          {{- include "ledger.container" . | nindent 10 }}
+          env:
+            - {name: MSP_ID, value: {{ $org.msp }}}
+            - {name: PEER_ENDPOINT, value: "{{ $peerHost }}:7051"}
+            - {name: PEER_TLS_ROOT, value: /tls/tlscacerts/ca.pem}
+            - {name: IDENTITY_DIR, value: /identity/msp}
+            - {name: CHANNEL, value: {{ $.Values.channel }}}
+            - {name: CHAINCODE, value: {{ $.Values.chaincode }}}
+            - {name: GATEWAY_TOKEN_FILE, value: /token/token}
+          ports:
+            - {containerPort: 8080, name: http}
+          readinessProbe:
+            httpGet: {path: /health, port: 8080}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 10m, memory: 32Mi}
+            limits: {memory: 128Mi}
+          volumeMounts:
+            - {name: crypto, mountPath: /identity, subPath: researcher, readOnly: true}
+            - {name: crypto, mountPath: /tls, subPath: public/msp, readOnly: true}
+            - {name: token, mountPath: /token, readOnly: true}
+      volumes:
+        - name: crypto
+          persistentVolumeClaim: {claimName: ledger-crypto, readOnly: true}
+        - name: token
+          secret: {secretName: ledger-gateway-token, defaultMode: 0440}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: horus-ledger-gateway
+  namespace: {{ $ns }}
+spec:
+  selector: {app: horus-ledger, horus-ledger/component: gateway}
+  ports:
+    - {name: http, port: 8080, targetPort: 8080}
+{{- end }}
+{{- end }}

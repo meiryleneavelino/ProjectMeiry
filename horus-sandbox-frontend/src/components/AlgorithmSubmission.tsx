@@ -4,7 +4,13 @@ import { Link } from "react-router-dom";
 import { governance, postGovernance } from "@/data/governance";
 import type { Identity, Submission } from "@/types/governance";
 
-const pendingStates = new Set(["queued", "running"]);
+const pendingStates = new Set(["drawing", "assigned"]);
+const MAX_BYTES = 900 * 1024;
+const stageLabel: Record<string, string> = {
+  drawing: "Drawing the reviewer (commit-reveal between organizations)",
+  assigned: "Analysis running in the reviewer's own environment",
+  approved: "Approved", rejected: "Rejected", error: "Analysis failed",
+};
 const input = "w-full rounded-lg border border-line bg-white px-3 py-2 text-sm";
 
 export default function AlgorithmSubmission({ organizations, identity, onCatalogChange }: {
@@ -52,7 +58,7 @@ export default function AlgorithmSubmission({ organizations, identity, onCatalog
     event.preventDefault();
     setError("");
     if (mode === "file" && (!file || !/\.(py|txt)$/i.test(file.name))) return setError("Select a .py or .txt file.");
-    if ((mode === "file" ? file!.size : new TextEncoder().encode(code).byteLength) > 1048576) return setError("Code must not exceed 1 MB.");
+    if ((mode === "file" ? file!.size : new TextEncoder().encode(code).byteLength) > MAX_BYTES) return setError("Code must not exceed 900 KB.");
     setBusy(true);
     try {
       let submitted: Submission;
@@ -99,12 +105,21 @@ export default function AlgorithmSubmission({ organizations, identity, onCatalog
     </label>}
     {item && <div className="space-y-3 border-t border-line pt-4" aria-live="polite">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-        <strong className="capitalize">Analysis: {item.status}{item.reused ? " (existing analysis reused)" : ""}</strong>
-        <span>Reviewer: {item.selection.reviewer} | Excluded: {item.selection.excluded}</span>
+        <strong>{stageLabel[item.status] ?? item.status}{item.reused ? " (existing ledger record reused)" : ""}</strong>
+        <span>Reviewer: {item.selection.reviewer ?? "not drawn yet"} | Excluded: {item.selection.excluded}</span>
       </div>
+      <ol className="space-y-1 text-xs text-ink-muted">
+        <li>1. Submitted by {item.researcher_org} (certificate identity {item.researcher_id.slice(0, 12)}...)</li>
+        <li>2. Draw: commits {item.selection.commits.join(", ") || "none"} / reveals {item.selection.reveals.join(", ") || "none"} of {item.selection.eligible.join(", ")}
+          {item.selection.defaulted.length > 0 && <> | defaulted: {item.selection.defaulted.join(", ")}</>}</li>
+        <li>3. Reviewer: {item.selection.reviewer ?? "pending"}{item.selection.selection_version && <> ({item.selection.selection_version})</>}</li>
+        <li>4. Signed analysis: {item.provenance ? `${item.provenance.msp_id} at ${new Date(item.provenance.recorded_at).toLocaleString()}` : "pending"}</li>
+        <li>5. Audits: {item.audits.length ? item.audits.map(audit => `${audit.organization} ${audit.match ? "matches" : "DIFFERS"}`).join(", ") : "none yet"}</li>
+      </ol>
+      {item.disputed && <p role="alert" className="text-sm font-semibold text-status-red">Disputed: an independent re-analysis produced a different report. The algorithm is not usable.</p>}
       <div className="space-y-2 text-xs">
         <div>Code hash <code className="block break-all">{item.code_hash}</code>
-          <Link className="break-all text-violet-deep underline" to={`/ledger?code_hash=${item.code_hash}&tx_id=${item.tx_ids.CodeSubmitted}`}>Code transaction: {item.tx_ids.CodeSubmitted}</Link></div>
+          {item.tx_ids.CodeSubmitted && <Link className="break-all text-violet-deep underline" to={`/ledger?code_hash=${item.code_hash}&tx_id=${item.tx_ids.CodeSubmitted}`}>Submission transaction: {item.tx_ids.CodeSubmitted}</Link>}</div>
         {item.report_hash && <div>Report hash <code className="block break-all">{item.report_hash}</code>
           <Link className="break-all text-violet-deep underline" to={`/ledger?code_hash=${item.code_hash}&tx_id=${item.tx_ids.CodeAnalyzed}`}>Analysis transaction: {item.tx_ids.CodeAnalyzed}</Link></div>}
       </div>
@@ -113,7 +128,7 @@ export default function AlgorithmSubmission({ organizations, identity, onCatalog
         <div className="flex flex-wrap gap-5 text-sm">
           <strong>Security score: {item.report.score}/100</strong>
           <span>High: {item.report.counts.high}</span><span>Medium: {item.report.counts.medium}</span><span>Low: {item.report.counts.low}</span>
-          <strong className={item.report.decision === "approved" ? "text-status-green" : "text-status-red"}>{item.report.decision.toUpperCase()}</strong>
+          <strong className={item.report.decision === "approved" && !item.disputed ? "text-status-green" : "text-status-red"}>{item.report.decision.toUpperCase()}</strong>
         </div>
         <ul className="space-y-1 text-sm text-ink-muted">{item.report.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>
         <div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-sm">
@@ -123,7 +138,9 @@ export default function AlgorithmSubmission({ organizations, identity, onCatalog
           </tr>)}</tbody>
         </table>{!item.report.findings.length && <p className="py-3 text-sm text-ink-muted">No findings under the current policy.</p>}</div>
         {item.provenance && <details className="text-xs"><summary className="cursor-pointer font-semibold">Analysis provenance</summary>
-          <dl className="mt-2 space-y-2 break-all"><dt>Image</dt><dd>{item.provenance.image}</dd><dt>Image digest</dt><dd>{item.provenance.digest}</dd>
+          <dl className="mt-2 space-y-2 break-all"><dt>Signed by</dt><dd>{item.provenance.organization} ({item.provenance.msp_id})</dd>
+            <dt>Analyzer image digest</dt><dd>{item.provenance.image_digest}</dd>
+            <dt>Draw seed</dt><dd>{item.selection.seed ?? "single eligible organization"}</dd>
             <dt>Rules hash</dt><dd>{item.report.rules_hash}</dd><dt>Policy hash</dt><dd>{item.report.policy_hash}</dd><dt>Semgrep</dt><dd>{item.report.semgrep_version}</dd></dl>
         </details>}
       </>}

@@ -1,6 +1,7 @@
 # Horus: guia completo do codigo, testes e observacao
 
-**Referencia:** implementacao local consolidada em 02/11/2026.
+**Referencia:** implementacao local consolidada em 02/11/2026 e atualizada em
+03/11/2026 com o ledger Hyperledger Fabric e a analise SAST local por organizacao.
 **Raiz usada neste documento:** Scattered-Directive.
 
 Este guia explica o codigo implementado, suas conexoes e como executar,
@@ -32,31 +33,39 @@ O sistema combina aprendizado federado DYNAMOS e governanca Horus. A
 governanca analisa codigo e registra decisoes; o DYNAMOS autoriza e executa
 o treinamento horizontal built-in. Sao controles diferentes.
 
+Desde 03/11/2026 a governanca segue o principio de **confianca zero**: o
+sorteio da revisora, a analise SAST e o registro do resultado nao dependem
+mais do servidor Horus. A explicacao detalhada, etapa por etapa, esta em
+[ledger Fabric e SAST local](ledger-fabric-e-sast-local.md).
+
 | Capacidade | Situacao |
 | --- | --- |
 | Regressao logistica com FedAvg | Real, com UVA/VU/TUDELFT e dados sinteticos. |
 | Jobs Kubernetes trainer + sidecar | Reais, um por organizacao em cada rodada. |
 | Dados locais readOnly no trainer | Real; sem exportacao de CSV ao coordenador. |
-| Identidade Meirylene Avelino / TUDelft | Configuracao no servidor, nao login OIDC. |
-| Upload .py/.txt ou texto | Real; UTF-8 valido, sem binario, ate 1 MB. |
-| Revisora diferente da organizacao autora | Sorteio real do servidor entre participantes selecionados. |
-| Semgrep por organizacao | Containers Docker reais, offline, com regras/politica comuns. |
+| Identidade Meirylene Avelino / TUDelft | Configuracao no servidor para a interface; no ledger, certificado Fabric `researcher` da TUDELFT. Nao e login OIDC. |
+| Upload .py/.txt ou texto | Real; UTF-8 valido, sem binario, ate 900 KiB. |
+| Revisora diferente da organizacao autora | Sorteio por commit-reveal entre as organizacoes elegiveis, feito pelo chaincode. |
+| Semgrep por organizacao | Job Kubernetes efemero no namespace da organizacao sorteada, sem rede, criado pelo agente dela. |
+| Assinatura do resultado | Transacao Fabric assinada pela identidade da organizacao revisora. |
+| Auditoria por re-execucao | Real: a outra organizacao elegivel refaz a analise; hash diferente marca disputa. |
 | Execucao de codigo submetido | Nao ocorre. O codigo e apenas texto para analise. |
-| Catalogo de algoritmos aprovados | Real, persistente e compartilhado pela instancia local. |
+| Catalogo de algoritmos aprovados | Derivado do ledger: aprovados e nao disputados. |
 | Treino de algoritmo novo aprovado | Bloqueado no frontend e no servidor; sandbox futura. |
-| Ledger encadeado | SQLite real com ancora separada; nao blockchain. |
-| Verify chain / Verify report | Reais. |
-| TrainingStarted | Registrado para inicio pela ponte de governanca; clientes diretos de 8096 ficam fora dela. |
+| Ledger | Hyperledger Fabric 2.5.16: canal horus-governance, 3 peers e 3 orderers Raft, um de cada organizacao. |
+| Chain head / Verify report | Reais, consultando o peer da TUDELFT; `tools.py ledger verify` compara os tres peers. |
+| TrainingStarted | Gravado no ledger pela identidade researcher; clientes diretos de 8096 ficam fora dele. |
 | Federated training / Ledger | Telas conectadas a APIs reais. |
-| Dashboard | Ledger, eventos e heartbeat reais; outros dados continuam demonstrativos. |
-| Besu/ExtremeXP | Codigo preservado; adaptador de auditoria nao ativado. |
-| VFL/TTP/FABRIC original | Preservado, nao acionado pelo fluxo horizontal do Horus. |
-| Prometheus/Grafana/Loki/collector/Jaeger | Nao instalados neste sandbox. |
+| Dashboard | Status do ledger e eventos reais; outros dados continuam demonstrativos. |
+| ExtremeXP | Repositorio preservado; contratos nao usados (ver secao 12 do documento do ledger). |
+| VFL/TTP/FABRIC original | Preservado, nao acionado pelo fluxo horizontal do Horus. A pasta `fabric/` e do testbed FABRIC, nao do Hyperledger Fabric. |
+| Prometheus/Grafana/Loki/collector/Jaeger | Nao instalados neste sandbox. Peers e orderers expoem metricas Prometheus na porta 9443, ainda sem coletor. |
 | Hubble | Agente habilitado no Cilium, sem Relay/UI. |
 
 As organizacoes sao namespaces no mesmo cluster/no local, nao datacenters
-independentes. O catalogo e compartilhado nesta instalacao, nao federado
-entre varias instalacoes com usuarios e identidades independentes.
+independentes. O desenho do ledger e o de producao (cada organizacao com suas
+chaves, peer, orderer e agente), mas neste sandbox um unico operador
+administra o cluster inteiro.
 
 O projeto antigo foi retirado da workspace e guardado em
 `~/.Trash/DYNAMOS-antigo-2026-10-29`. Seus clusters ficaram parados, nao
@@ -68,22 +77,18 @@ clusters antigos nao foram migrados automaticamente para o novo.
 Desenhos deste guia: [arquitetura](diagrams/horus-guia-completo-1.svg),
 [fluxo SAST](diagrams/horus-guia-completo-2.svg),
 [sequencia do treino](diagrams/horus-guia-completo-3.svg) e
-[observabilidade](diagrams/horus-guia-completo-4.svg).
+[observabilidade](diagrams/horus-guia-completo-4.svg). Desenhos detalhados do
+ledger: [ledger-fabric-1 a 4](ledger-fabric-e-sast-local.md).
 
 ```mermaid
 flowchart TB
     Pessoa[Pesquisadora no navegador] --> UI[React e Vite - Mac - 5175]
-    UI -->|governance-api| GOV[API de governanca - Docker - 8097]
+    UI -->|governance-api| GOV[API de governanca - Docker - 8097 - sem Docker socket]
     UI -->|training-api: consultar, cancelar e baixar| PF[Port-forward - Mac - 8096]
     GOV -->|iniciar somente built-in| PF
-    GOV --> DB[(SQLite: catalogo, fila, codigo, relatorios e eventos)]
-    GOV --> Head[Ancora separada da cabeca do ledger]
-    DB --> Worker[Worker confiavel - unico consumidor da fila]
-    Worker --> Scan[UMA imagem SAST: UVA ou VU ou TUDELFT]
-    Scan -->|relatorio - codigo nunca executado| Worker
-    Worker --> DB
-    Worker --> Head
-    Tools[dynamos-dev - ferramentas locais] --> KAPI
+    GOV -->|port-forward 8098| LGW
+    GOV --> DB[(SQLite: somente idempotencia de pedidos de treino)]
+    Tools[dynamos-dev - kubectl, kind e Helm] --> KAPI
     subgraph K[Cluster kind-scattered-training - um no Docker Desktop]
         subgraph Core[core]
             Rabbit[RabbitMQ]
@@ -94,26 +99,29 @@ flowchart TB
             Policy[Policy-enforcer e sidecar]
             Orch[Orchestrator e sidecar]
             Coord[Coordenador Python FedAvg]
-            Global[(PVC historico e modelo global)]
         end
         subgraph UVA[uva]
-            AU[Agente UVA e sidecar]
-            JU[Job trainer e sidecar UVA]
-            DU[(PVC dataset UVA)]
+            AU[Agente de treino UVA]
+            JU[Jobs trainer UVA]
+            LU[Ledger UVA: CA, peer0, orderer0, chaincode]
+            SU[horus-sast-agent UVA]
+            XU[Jobs SAST efemeros UVA]
         end
         subgraph VU[vu]
-            AV[Agente VU e sidecar]
-            JV[Job trainer e sidecar VU]
-            DV[(PVC dataset VU)]
+            AV[Agente de treino VU]
+            JV[Jobs trainer VU]
+            LV[Ledger VU: CA, peer0, orderer0, chaincode]
+            SV[horus-sast-agent VU]
+            XV[Jobs SAST efemeros VU]
         end
         subgraph TU[tudelft]
-            AT[Agente TUDELFT e sidecar]
-            JT[Job trainer e sidecar TUDELFT]
-            DT[(PVC dataset TUDELFT)]
+            AT[Agente de treino TUDELFT]
+            JT[Jobs trainer TUDELFT]
+            LT[Ledger TUDELFT: CA, peer0, orderer0, chaincode]
+            ST[horus-sast-agent TUDELFT]
+            LGW[horus-ledger-gateway - identidade researcher]
         end
         KAPI[Kubernetes API, scheduler, controllers e etcd Kubernetes]
-        Rede[CoreDNS, kube-proxy, Cilium e Envoy]
-        Storage[local-path-provisioner e PVCs]
     end
     PF --> Gateway
     Gateway <--> Rabbit
@@ -122,50 +130,49 @@ flowchart TB
     Rabbit <--> AU
     Rabbit <--> AV
     Rabbit <--> AT
-    Gateway --> Etcd
     Policy --> Etcd
     Orch --> Etcd
     Gateway <--> Coord
     Coord <--> AU
     Coord <--> AV
     Coord <--> AT
-    AU -->|criar Job| KAPI
-    AV -->|criar Job| KAPI
-    AT -->|criar Job| KAPI
-    KAPI --> JU
-    KAPI --> JV
-    KAPI --> JT
-    DU -->|readOnly no trainer| JU
-    DV -->|readOnly no trainer| JV
-    DT -->|readOnly no trainer| JT
-    JU -->|resultado via sidecar| Rabbit
-    JV -->|resultado via sidecar| Rabbit
-    JT -->|resultado via sidecar| Rabbit
-    Coord --> Global
-    Rede -.->|nomes, Services e NetworkPolicies| KAPI
-    Storage -.-> DU
-    Storage -.-> DV
-    Storage -.-> DT
+    AU -->|criar Job| JU
+    AV -->|criar Job| JV
+    AT -->|criar Job| JT
+    LGW --> LT
+    LT <-->|canal horus-governance: gossip, endosso e Raft| LU
+    LU <-->|canal horus-governance| LV
+    LT <-->|canal horus-governance| LV
+    SU --> LU
+    SV --> LV
+    ST --> LT
+    SU -->|cria e apaga| XU
+    SV -->|cria e apaga| XV
 ```
 
 ### Ambientes e unidades
 
 | Unidade | Papel |
 | --- | --- |
-| Mac | Navegador, Vite, Python dos launchers e port-forward. |
+| Mac | Navegador, Vite, Python dos launchers e port-forwards. |
 | Docker Desktop | Ambiente Linux de containers no Mac. |
 | scattered-training-control-plane | Container que representa o no kind; nao e um trainer. |
 | dynamos-dev | Docker CLI, kind, kubectl e Helm, fora do cluster. |
-| horus-governance-api | API sem Docker socket; publica somente localhost:8097. |
-| horus-governance-worker | Consumidor da fila com Docker socket; fronteira confiavel com privilegio operacional. |
-| horus-sast-* | Analisador temporario sem rede, datasets ou socket. |
+| horus-governance-api | API sem Docker socket; publica somente localhost:8097. Nao e confiavel para as organizacoes. |
+| horus-ledger-gateway | Ponte HTTP para o peer da TUDELFT com a identidade `researcher`; exposto em 8098 por port-forward. |
+| ledger-ca / ledger-enroll | CA e Job de matricula de cada organizacao; chaves geradas no proprio namespace. |
+| peer0 / orderer0 | No do ledger e membro Raft de cada organizacao. |
+| horus-chaincode | Regras do Horus (chaincode Go) de cada organizacao. |
+| horus-sast-agent | Sorteio, analise e auditoria em nome de UMA organizacao. |
+| Job horus-sast-* | Analisador temporario sem rede, token, dataset ou socket. |
+| ledger-admin | Console do administrador da organizacao; usado no setup. |
 | Namespace | Separacao logica no mesmo cluster. |
 | Deployment | Mantem Pods de servicos permanentes. |
 | Pod | Containers que compartilham rede localhost. |
-| Job | Tarefa que precisa terminar, como treino local de uma rodada. |
+| Job | Tarefa que precisa terminar: treino local de uma rodada ou uma analise SAST. |
 | Service | Nome/endereco estavel, resolvido por CoreDNS. |
 | PVC | Volume persistente local; nao e backup nem replicacao entre organizacoes. |
-| ServiceAccount/RBAC | Permissoes Kubernetes, distintas dos acordos de negocio. |
+| ServiceAccount/RBAC | Permissoes Kubernetes, distintas dos acordos de negocio e das identidades Fabric. |
 | Sidecar DYNAMOS | Ponte gRPC/RabbitMQ; nao e Linkerd nem ferramenta SAST. |
 
 ### Namespaces e Pods
@@ -174,17 +181,18 @@ flowchart TB
 | --- | --- |
 | core | RabbitMQ e etcd-0/1/2 da aplicacao. |
 | training-system | Gateway, policy-enforcer, orchestrator e coordenador. |
-| uva, vu, tudelft | Um agente permanente, seed e Jobs por rodada. |
+| uva, vu, tudelft | Treino: um agente permanente, seed e Jobs por rodada. Ledger: ledger-ca, orderer0, peer0, ledger-admin, horus-chaincode, horus-sast-agent, Job ledger-enroll e Jobs horus-sast efemeros. Em tudelft tambem horus-ledger-gateway. |
 | kube-system | API Kubernetes, scheduler, controllers, etcd Kubernetes, CoreDNS, kube-proxy e Cilium/Envoy/operator. |
 | local-path-storage | Provisionador dos volumes locais. |
 
 A aplicacao de treinamento tem 11 Pods permanentes, sem contar infraestrutura
-e Jobs: quatro em core, quatro em training-system e tres agentes. Servicos
-Go/agentes possuem dois containers por Pod; o coordenador possui um. A API e
-o worker de governanca sao containers Docker e nao entram nessa contagem.
+e Jobs: quatro em core, quatro em training-system e tres agentes. O ledger
+acrescenta 19 Pods permanentes: seis por organizacao e o gateway na TUDELFT.
+A API de governanca e um container Docker e nao entra nessa contagem.
 
 O etcd de core guarda configuracao da aplicacao. O etcd de kube-system guarda
-o estado do Kubernetes. Nao usar o segundo para consultar ou editar acordos.
+o estado do Kubernetes. O ledger Fabric guarda a governanca. Sao tres bases
+diferentes: nao usar uma para consultar ou editar a outra.
 
 ## 3. Organizacao do codigo
 
@@ -199,22 +207,23 @@ Scattered-Directive/
     src/data/                    cliente de governanca e mocks legados
     src/types/                   contratos TypeScript
   horus-governance/
-    app/                         API, fila, catalogo, ponte e ledger
-    sast/                        Semgrep e runner Docker
-    config/                      identidade, politica e organizacoes
+    app/                         API, cliente do ledger, catalogo e ponte de treino
+    ledger/                      Go: chaincode, sast-agent e gateway (um binario)
+    deploy/ledger/               chart Helm e setup.py do ledger Fabric
+    sast/                        Semgrep e runner Docker (CLI de operador)
+    config/                      identidade, politica e organizacoes/MSPs
     examples/                    scripts para tratar somente como texto
     tests/                       testes de contrato, API e integracao
-    deploy/kubernetes/           template futuro, nao aplicado
-    .local/                      dados privados da instancia
-    compose.yaml                 API e worker locais
-    tools.py                     CLI de build/start/stop/status/analise
+    .local/                      dados privados da instancia (inclui .local/ledger/)
+    compose.yaml                 somente a API
+    tools.py                     CLI: build, ledger, start/stop/status, analise
   go/                            servicos DYNAMOS e sidecars
   python/federated-training/      coordenador e algoritmo horizontal
   charts/federated-training/      recursos Kubernetes do treinamento
   configuration/federated-training/ setup, isolamento e testes
   proto-files/                   protocolos gRPC/Protobuf
-  extremexp_accesscontrol/        Flask/Web3 e contratos ABAC preservados
-  fabric/                        notebooks e fluxo FABRIC original
+  extremexp_accesscontrol/        Flask/Web3 e contratos ABAC preservados, nao usados
+  fabric/                        notebooks do testbed FABRIC (nao e Hyperledger Fabric)
   house_energy_consumption/      material do workload vertical original
   web/                           frontend original, distinto do Horus
   docs/                          guias e desenhos
@@ -226,12 +235,12 @@ Scattered-Directive/
 | --- | --- |
 | [App.tsx](../horus-sandbox-frontend/src/App.tsx) | Rotas, Sidebar, Topbar e area de conteudo. |
 | [FederatedTraining.tsx](../horus-sandbox-frontend/src/pages/FederatedTraining.tsx) | Identidade, catalogo, inicio via governanca, progresso, cancelamento e download. |
-| [AlgorithmSubmission.tsx](../horus-sandbox-frontend/src/components/AlgorithmSubmission.tsx) | Arquivo/texto, polling, achados, proveniencia e links ao ledger. |
-| [Ledger.tsx](../horus-sandbox-frontend/src/pages/Ledger.tsx) | Filtros, paginacao, detalhe e verificadores. |
-| [Dashboard.tsx](../horus-sandbox-frontend/src/pages/Dashboard.tsx) | Ledger/worker reais e componentes demonstrativos remanescentes. |
+| [AlgorithmSubmission.tsx](../horus-sandbox-frontend/src/components/AlgorithmSubmission.tsx) | Arquivo/texto, polling, as cinco etapas (submissao, sorteio, revisora, assinatura, auditorias), disputa, achados e links ao ledger. |
+| [Ledger.tsx](../horus-sandbox-frontend/src/pages/Ledger.tsx) | Eventos Fabric com organizacao/MSP, filtros, paginacao, bloco e validacao da transacao, verificadores. |
+| [Dashboard.tsx](../horus-sandbox-frontend/src/pages/Dashboard.tsx) | Status do ledger e eventos reais; componentes demonstrativos remanescentes. |
 | [SandboxStatusPanel.tsx](../horus-sandbox-frontend/src/components/SandboxStatusPanel.tsx) | Apresenta status recebido; nao mede infraestrutura por conta propria. |
 | [data/governance.ts](../horus-sandbox-frontend/src/data/governance.ts) | Cliente HTTP de /governance-api. |
-| [types/governance.ts](../horus-sandbox-frontend/src/types/governance.ts) | Tipos de identidade, catalogo, submissao, relatorio, ledger e status. |
+| [types/governance.ts](../horus-sandbox-frontend/src/types/governance.ts) | Tipos de identidade, catalogo, submissao, auditoria, eventos, transacao e status. |
 | [data/mock.ts](../horus-sandbox-frontend/src/data/mock.ts) | Dados ficticios usados fora do fluxo implementado. |
 | [vite.config.ts](../horus-sandbox-frontend/vite.config.ts) | Dois proxies e tokens lidos apenas no servidor Vite. |
 
@@ -239,26 +248,38 @@ O browser nao recebe o bearer token no bundle. React exibe codigo/mensagens
 como texto escapado, nao HTML interpretado. O Vite continua sendo servidor
 local de desenvolvimento, nao autenticacao de producao.
 
-### Governanca
+### Governanca (Python)
 
 | Arquivo e simbolo | Responsabilidade |
 | --- | --- |
 | [app/main.py](../horus-governance/app/main.py): create_app / BoundedBody | Rotas, bearer token, Origin, schemas, limite de corpo, upload e erros sanitizados. |
-| [app/settings.py](../horus-governance/app/settings.py): Settings | Identidade do servidor, URL de treino, caminhos e token local. |
-| [app/reviewer.py](../horus-governance/app/reviewer.py): select_reviewer | Valida participantes, exclui autora e faz sorteio. |
-| [app/service.py](../horus-governance/app/service.py): Governance.submit | Normaliza, deduplica e persiste submissao/sorteio. |
-| app/service.py: work_once / catalog / verify_submission | Consome fila, valida SAST, registra catalogo/eventos e verifica relatorios. |
-| [app/worker.py](../horus-governance/app/worker.py) | Processo separado, lock, heartbeat e interrupcao. |
-| [app/storage.py](../horus-governance/app/storage.py): Store | SQLite parametrizado, transacoes, lock e ancora. |
-| [app/ledger.py](../horus-governance/app/ledger.py): LedgerBackend / SQLiteLedger | Interface substituivel, append, leitura e verificacao. |
-| [app/training_bridge.py](../horus-governance/app/training_bridge.py): TrainingBridge | Inicio built-in, idempotencia e reconciliacao. |
+| [app/settings.py](../horus-governance/app/settings.py): Settings | Identidade exibida, URL de treino, URL e token do gateway do ledger. |
+| [app/reviewer.py](../horus-governance/app/reviewer.py): eligible_reviewers | So valida a selecao e exclui a autora. Nao sorteia mais. |
+| [app/service.py](../horus-governance/app/service.py): Governance | Normaliza, limita a 900 KiB, deduplica pelo ledger, apresenta o estado e verifica relatorios. |
+| [app/ledger.py](../horus-governance/app/ledger.py): FabricLedger | Cliente HTTP do gateway; mapeia erros do chaincode para HTTP. |
+| [app/storage.py](../horus-governance/app/storage.py): Store | SQLite apenas para pedidos de treino idempotentes. |
+| [app/training_bridge.py](../horus-governance/app/training_bridge.py): TrainingBridge | Inicio built-in, idempotencia, reconciliacao e TrainingStarted no ledger. |
 | [sast/contracts.py](../horus-governance/sast/contracts.py) | Limites, normalizacao, JSON canonico, nota e hash. |
-| [sast/analyze.py](../horus-governance/sast/analyze.py) | Parsing de sintaxe, Semgrep local e extracao sem snippets. |
-| [sast/docker_runner.py](../horus-governance/sast/docker_runner.py) | Resolve imagem imutavel, aplica isolamento, limita tempo e remove container. |
+| [sast/analyze.py](../horus-governance/sast/analyze.py) | Parsing de sintaxe, Semgrep local e extracao sem snippets (roda dentro do Job). |
+| [sast/docker_runner.py](../horus-governance/sast/docker_runner.py) | Build das imagens e CLI `tools.py analyze` de operador; fora do fluxo da API. |
 | [config/policy.json](../horus-governance/config/policy.json) | Politica comum de nota e aprovacao. |
-| [config/organizations.json](../horus-governance/config/organizations.json) | Imagens e futuros namespaces de analise. |
-| [config/settings.example.json](../horus-governance/config/settings.example.json) | Identidade e configuracao inicial do servidor. |
+| [config/organizations.json](../horus-governance/config/organizations.json) | Imagem SAST, namespace e MSP de cada organizacao. |
+| [config/settings.example.json](../horus-governance/config/settings.example.json) | Identidade exibida e configuracao inicial do servidor. |
 | [sast/rules.yaml](../horus-governance/sast/rules.yaml) | Regras em sintaxe JSON, tambem valida em YAML. |
+
+### Ledger (Go) e implantacao
+
+| Arquivo | Responsabilidade |
+| --- | --- |
+| [ledger/governance/contract.go](../horus-governance/ledger/governance/contract.go) | Regras do chaincode: configuracao acordada, submissao, commit-reveal, sorteio, registro, recalculo da nota, auditoria, treino e consultas. |
+| [ledger/governance/model.go](../horus-governance/ledger/governance/model.go) | Estruturas gravadas no ledger e interface Context. |
+| [ledger/internal/chaincode](../horus-governance/ledger/internal/chaincode/chaincode.go) | Adaptador shim/cid: MSP, atributos, OU admin e timestamp da transacao. |
+| [ledger/internal/agent](../horus-governance/ledger/internal/agent/agent.go) | sast-agent: ciclo de 3 s, commit/reveal, analise, auditoria, novas tentativas. |
+| [ledger/internal/agent/kube.go](../horus-governance/ledger/internal/agent/kube.go) | Job e ConfigMap efemeros, leitura de logs e do digest da imagem. |
+| [ledger/internal/fabclient](../horus-governance/ledger/internal/fabclient/fabclient.go) | Conexao Fabric Gateway com TLS e assinatura da identidade. |
+| [ledger/internal/httpgw](../horus-governance/ledger/internal/httpgw/httpgw.go) | API HTTP do gateway e consultas qscc (altura, bloco, validacao). |
+| [deploy/ledger/chart](../horus-governance/deploy/ledger/chart/) | CA, matricula, orderer, peer, console, chaincode, agente, gateway, RBAC e NetworkPolicies por organizacao. |
+| [deploy/ledger/setup.py](../horus-governance/deploy/ledger/setup.py) | Setup idempotente: identidades, canal, chaincode, configuracao e verificacao cruzada. |
 
 ### Treinamento
 
@@ -278,9 +299,10 @@ local de desenvolvimento, nao autenticacao de producao.
 | [manage.py](../configuration/federated-training/manage.py) | Setup, status, verify e port-forward. |
 | [verify.py](../configuration/federated-training/verify.py) | Probes reais de mounts, rede e RBAC. |
 
-As pastas protegidas acima ja continham o fluxo horizontal adaptado; nao foram
-alteradas na adicao posterior da governanca. VFL/TTP/FABRIC e ExtremeXP sao
-fluxos preservados distintos, nao caminhos automaticamente acionados pelo Horus.
+As pastas protegidas acima nao foram alteradas pela governanca nem pelo
+ledger: o ledger usa os mesmos namespaces, mas com chart e Pods proprios, e as
+NetworkPolicies novas selecionam apenas Pods do ledger. VFL/TTP/FABRIC e
+ExtremeXP sao fluxos preservados distintos.
 
 ## 4. Configuracao e persistencia
 
@@ -289,49 +311,66 @@ fluxos preservados distintos, nao caminhos automaticamente acionados pelo Horus.
 | Porta/nome | Onde | Uso |
 | --- | --- | --- |
 | 5175 | localhost no Mac | Vite/Horus e os dois proxies. |
-| 8096 | localhost no Mac | Port-forward do Service api-gateway. |
+| 8096 | localhost no Mac | Port-forward do Service api-gateway (treino). |
 | 8097 | localhost no Mac | API de governanca publicada pelo Compose. |
-| 8080 | Interna ao cluster | HTTP entre gateway, coordenador e agentes. |
+| 8098 | localhost no Mac | Port-forward do horus-ledger-gateway (tudelft). |
+| 8080 | Interna ao cluster | HTTP entre gateway, coordenador e agentes; gateway do ledger. |
 | 50051 | Local aos Pods Go | gRPC para sidecars DYNAMOS. |
 | 5672 | RabbitMQ em core | Mensagens da aplicacao, nao painel web do broker. |
 | 2379/2380 | etcd em core | Cliente/peers do etcd da aplicacao. |
+| 7050 | orderer0 de cada organizacao | Ordenacao e Raft, TLS. |
+| 7051 | peer0 de cada organizacao | Endosso, gossip e Fabric Gateway, TLS. |
+| 7053 | orderer0 | Administracao do canal (osnadmin), TLS mutuo. |
+| 7054 | ledger-ca | CA, TLS; so o Job de matricula acessa. |
+| 9999 | horus-chaincode | Chaincode-as-a-service; so o peer local acessa. |
+| 9443 | peer0/orderer0 | Saude e metricas Prometheus, sem coletor instalado. |
 
 Nao abrir portas internas indiscriminadamente. O navegador nao acessa
-diretamente agentes/coordenador. Localhost nao e uma solucao de acesso remoto.
+diretamente agentes/coordenador/peers. Localhost nao e uma solucao de acesso
+remoto.
 
 | Variavel | Finalidade |
 | --- | --- |
-| DOCKER_BIN | Caminho Docker; no worker aponta ao executavel Linux. |
+| DOCKER_BIN | Caminho Docker usado pelos launchers. |
 | DYNAMOS_DEV_CONTAINER | Nome das ferramentas, padrao dynamos-dev. |
 | SCATTERED_CONTAINER_ROOT | Mount nas ferramentas, padrao /workspace/Scattered-Directive. |
+| HORUS_KIND_CLUSTER | Cluster do ledger, padrao scattered-training. |
 | HORUS_SETTINGS | Arquivo de identidade no processo de governanca. |
-| HORUS_STATE_ROOT | Pasta do estado da governanca; /state nos containers. |
+| HORUS_STATE_ROOT | Pasta do estado da governanca; /state no container. |
 | HORUS_TRAINING_URL | URL de treino vista pelo processo da governanca. |
 | HORUS_TRAINING_TOKEN_FILE | Token de treino, montado somente leitura. |
-| HORUS_UID/GID/DOCKER_GID | Usuario/grupos usados pelo Compose; launcher preenche valores locais. |
+| HORUS_LEDGER_URL | URL do gateway do ledger; no container `http://host.docker.internal:8098`. |
+| HORUS_LEDGER_TOKEN_FILE | Token do gateway; no container `/state/ledger/gateway-token`. |
+| HORUS_UID/GID | Usuario/grupo usados pelo Compose; launcher preenche valores locais. |
 
 O Compose monta explicitamente config/settings.example.json. Mudar apenas
-variavel no shell do Mac nao altera esse mount. Para mudar identidade, editar
-a configuracao do servidor e reiniciar governanca; pseudonimo deve ser opaco.
+variavel no shell do Mac nao altera esse mount. A organizacao usada no ledger
+vem do certificado `researcher`, nao desse arquivo.
 
 ### Dados persistentes
 
 | Local | Conteudo |
 | --- | --- |
-| horus-governance/.local/governance.sqlite3 | events, submissions, algorithms e training_requests. Submissions contem codigo e relatorios fora do ledger: dado sensivel. |
-| horus-governance/.local/ledger-head.json | Numero/hash da cabeca esperada; separado do banco, mas nao do host. |
+| horus-governance/.local/governance.sqlite3 | Tabela training_requests (idempotencia). Tabelas do ledger SQLite anterior, se existirem, ficam intactas e nao sao mais lidas. |
 | horus-governance/.local/api-token | Token da governanca lido pelo Vite; nao publicar. |
-| writer.lock / worker.lock | Serializacao das escritas e exclusao de workers concorrentes. |
-| worker-status.json | Heartbeat aproximado do worker. |
+| horus-governance/.local/ledger/gateway-token | Token do gateway do ledger; nao publicar. |
+| horus-governance/.local/ledger/governance.json | Configuracao acordada (publica). |
+| horus-governance/.local/ledger/genesis.block, public/ | Bloco genese e material publico das organizacoes. Sem chaves privadas. |
+| horus-governance/.local/ledger/chaincode-ids.json, values.json | IDs de pacote e ultimos valores Helm aplicados. |
+| PVC ledger-crypto de cada organizacao | Identidades e chaves privadas daquela organizacao. Sensivel. |
+| PVC ledger-ca de cada organizacao | Chave da CA. Sensivel. |
+| PVCs ledger-peer-data / ledger-orderer-data | Copia do ledger e dados Raft. |
+| PVC ledger-agent-state | Segredos do sorteio do agente. |
 | configuration/federated-training/.local/ | Credenciais, valores locais e relatorios do treinamento. Nao versionar. |
 | PVC training-data de cada organizacao | Dataset sintetico; somente o trainer o monta readOnly. |
 | PVC training-state dos agentes | Estado e resultados das rodadas locais. |
 | PVC do coordenador | Historico por UUID e modelo global. |
 | ConfigMap por rodada | Entrada e capacidade de resultado; nao imprimir valores em demonstracoes publicas. |
 
-Governanca apenas le o token de treinamento. Se ele nao existir, start recusa
-iniciar; o Compose nao deve criar esse caminho. Backup do Git nao inclui
-automaticamente .local/ nem os dados dos PVCs.
+O codigo submetido fica no estado do canal (visivel as tres organizacoes) e
+nao mais no SQLite do servidor. Governanca apenas le o token de treinamento:
+se ele nao existir, start recusa iniciar. Backup do Git nao inclui .local/ nem
+os PVCs.
 
 ## 5. Inicializacao e parada
 
@@ -344,29 +383,33 @@ export DOCKER_BIN=/Applications/Docker.app/Contents/Resources/bin/docker
 kc() { "$DOCKER_BIN" exec dynamos-dev kubectl --context kind-scattered-training "$@"; }
 ```
 
-Adaptar PROJECT e Docker no Linux. Definir variaveis/funcao em cada terminal
-novo. kc fixa o contexto em toda chamada, sem mudar o contexto global.
-Requisitos: Docker Desktop/Compose, Python 3.10+ para governanca e Node.js 18+.
-Os testes Go exigem versao compativel com go/go.mod.
+Adaptar PROJECT ao local da sua copia e o Docker no Linux. Definir
+variaveis/funcao em cada terminal novo. kc fixa o contexto em toda chamada,
+sem mudar o contexto global. Requisitos: Docker Desktop/Compose, Python 3.10+
+para governanca, Node.js 18+ e Go 1.23+ apenas para rodar os testes Go fora
+do Docker.
 
 Com 4 CPUs/8 GB, manter os clusters antigos parados. Tres clusters simultaneos
-ja causaram saturacao/timeouts nesta maquina. Nao excluir dados para resolver isso.
+ja causaram saturacao/timeouts nesta maquina. O ledger acrescenta cerca de
+1 GB de memoria ao no kind.
 
 ### Primeira instalacao, somente quando necessaria
 
 ```bash
 bash dev.sh
 python3 configuration/federated-training/manage.py setup
+cd horus-governance
+python3 tools.py ledger setup
 ```
 
-O setup constroi imagens, cria o cluster, instala rede/servicos, prepara dados
-e verifica isolamento. Pode baixar imagens/charts na instalacao. A analise SAST
-posterior e offline; isso nao significa que o build inicial dispense internet.
+O primeiro setup cria o cluster de treino. O segundo cria o ledger nos
+namespaces uva, vu e tudelft (secao 5 do
+[documento do ledger](ledger-fabric-e-sast-local.md) explica cada etapa).
+Ambos podem baixar imagens na instalacao; a analise SAST posterior e offline.
 
-**Nao repetir setup ou verify durante um treino.** O setup reinicia servicos;
-verify controla temporariamente o gate enquanto testa probes. --skip-build
-nao transforma setup em comando somente leitura. Nao editar networkVerified
-manualmente para contornar uma verificacao falhada.
+**Nao repetir setup ou verify do treino durante um treino.** `ledger setup` e
+idempotente e pode ser repetido, mas reinicia chaincode/agentes/gateway se a
+imagem horus-ledger mudar.
 
 ### Retomar ambiente instalado
 
@@ -383,13 +426,9 @@ kc wait --for=condition=Ready nodes --all --timeout=180s
 kc get pods -A
 ```
 
-Se ja estiver ligado, apenas conferir o inventario. dynamos-dev e o container
-atual de ferramentas, nao o projeto antigo. Os comandos tools.py start e npm
-abaixo sao do Mac, nao comandos para rodar dentro dele.
+Os Pods do ledger voltam sozinhos com o no; volumes e identidades persistem.
 
 ### Terminal 1: API de treinamento
-
-Somente se ainda nao houver encaminhamento na porta:
 
 ```bash
 python3 configuration/federated-training/manage.py forward
@@ -397,21 +436,33 @@ python3 configuration/federated-training/manage.py forward
 
 Esperado: Forwarding from 127.0.0.1:8096. Manter esse terminal aberto.
 
-### Terminal 2: governanca em background
+### Terminal 2: gateway do ledger
 
 ```bash
 cd "$PROJECT/horus-governance"
-python3 tools.py build
+python3 tools.py ledger forward
+```
+
+Esperado: Forwarding from 127.0.0.1:8098. Alternativa sem ocupar terminal:
+`python3 tools.py ledger forward --background`. O encaminhamento cai se o Pod
+do gateway reiniciar; repetir o comando.
+
+### Terminal 3: governanca em background
+
+```bash
+cd "$PROJECT/horus-governance"
+python3 tools.py build      # so quando imagens SAST/regras/politica mudarem
 python3 tools.py start
 python3 tools.py status
 ```
 
-build constroi as quatro imagens SAST; repetir quando elas/regras/politica
-mudarem. start constroi a API e inicia API/worker via Compose, sem ocupar o
-terminal. A credencial do treinamento precisa existir antes. API nao monta
-Docker socket; so o worker confiavel o monta.
+start exige o token do treino e o token do gateway (criado por ledger setup).
+So a API sobe; nao existe mais worker nem Docker socket. `--remove-orphans`
+remove o container `horus-governance-worker` de versoes anteriores.
+Reconstruir as imagens SAST muda os digests acordados no ledger; ver secao 9
+do documento do ledger antes de fazer isso.
 
-### Terminal 3: frontend
+### Terminal 4: frontend
 
 ```bash
 cd "$PROJECT"
@@ -420,7 +471,6 @@ npm --prefix horus-sandbox-frontend run dev -- --strictPort
 ```
 
 ci e necessario na primeira vez ou ao mudar dependencias, nao em toda sessao.
-Manter Vite aberto. Nao iniciar copias se a porta estiver ocupada.
 Abrir <http://127.0.0.1:5175/training> e <http://127.0.0.1:5175/ledger>.
 
 ### Prontidao e parada
@@ -429,84 +479,92 @@ Abrir <http://127.0.0.1:5175/training> e <http://127.0.0.1:5175/ledger>.
 curl -fsS http://127.0.0.1:5175/training-api/catalog | python3 -m json.tool
 curl -fsS http://127.0.0.1:5175/governance-api/me | python3 -m json.tool
 curl -fsS http://127.0.0.1:5175/governance-api/status | python3 -m json.tool
+cd "$PROJECT/horus-governance" && python3 tools.py ledger verify
 ```
 
-Esperado: isolamento verificado, identidade TUDELFT, ledger.valid=true e
-worker_ready=true. /health sozinho nao prova esses quatro estados.
+Esperado: isolamento verificado, identidade TUDELFT, `ledger_ready=true`,
+`blockchain=true`, altura do canal, e no verify as tres organizacoes com a
+mesma altura, o mesmo hash e `config=agreed`.
 
 ```bash
 cd "$PROJECT/horus-governance"
 python3 tools.py stop
 ```
 
-stop nao remove .local/. Ctrl+C fecha Vite/port-forward/observadores em seus
-terminais. Evitar interromper servicos durante treino/analise. Nao usar
-down -v, kind delete, docker prune ou remover PVC/.local/ para apenas reiniciar.
+stop nao remove .local/ nem o ledger. `python3 tools.py ledger down` remove os
+Pods do ledger e mantem dados; `--purge` apaga o historico (irreversivel).
+Nao usar down -v, kind delete, docker prune ou remover PVC/.local/ para apenas
+reiniciar.
 
 ## 6. Submissao, sorteio e SAST
 
+A explicacao completa esta no
+[documento do ledger, secao 6](ledger-fabric-e-sast-local.md#6-a-vida-de-uma-submissao-etapa-por-etapa).
+Resumo:
+
 ```mermaid
 flowchart TD
-    Texto[Arquivo ou texto no Horus] --> Entrada[Validar extensao, UTF-8, binario e limite]
+    Texto[Arquivo ou texto no Horus] --> Entrada[API: extensao, UTF-8, binario e limite de 900 KiB]
     Entrada --> Normalizar[CRLF e CR para LF - SHA-256]
-    Normalizar --> Contexto[Validar participantes e excluir organizacao autora]
-    Contexto --> Existe{Hash do codigo ja existe?}
-    Existe -->|sim| Reusar[Retornar mesma submissao, revisora e resultado]
-    Existe -->|nao| Sorteio[UMA revisora elegivel com seed criptografica]
-    Sorteio --> Fila[Persistir queued e eventos iniciais]
-    Fila --> Worker[Worker marca running e cria container isolado]
-    Worker --> SAST[AST estatico e Semgrep com regras locais]
-    SAST --> Completa{Analise completa e resultado verificavel?}
-    Completa -->|nao| Erro[Status error - nenhuma aprovacao]
-    Completa -->|sim| Relatorio[Nota, contagens, achados e hash deterministico]
-    Relatorio --> Decisao{Zero altos e nota pelo menos 70?}
-    Decisao -->|nao| Reprovado[CodeAnalyzed e CodeRejected]
-    Decisao -->|sim| Aprovado[CodeAnalyzed, CodeValidated e AlgorithmRegistered]
-    Aprovado --> Catalogo[Catalogo compartilhado - executable false]
-    Reprovado --> Tela[Horus exibe resultado e links de auditoria]
-    Catalogo --> Tela
+    Normalizar --> Existe{Hash ja esta no ledger?}
+    Existe -->|sim| Reusar[Retornar o registro existente]
+    Existe -->|nao| Submit[SubmitCode assinado pela identidade researcher]
+    Submit --> Elegiveis[Chaincode: organizacao pelo certificado e elegiveis sem a autora]
+    Elegiveis --> Uma{Uma unica elegivel?}
+    Uma -->|sim| Assigned[assigned]
+    Uma -->|nao| Commit[Cada elegivel grava H de um segredo]
+    Commit --> Reveal[Cada elegivel revela o segredo]
+    Reveal --> Sorteio[Chaincode sorteia com todos os segredos - recalculavel]
+    Sorteio --> Assigned
+    Assigned --> Job[Agente da sorteada cria Job efemero no SEU namespace]
+    Job --> Confere[Agente confere hash do codigo, do relatorio e digest da imagem]
+    Confere --> Record[RecordAnalysis assinado pela sorteada]
+    Record --> Chaincode{Chaincode: sorteada, regras, politica, imagem e nota coerentes?}
+    Chaincode -->|nao| Recusa[Transacao recusada - nada gravado]
+    Chaincode -->|sim| Decisao{Zero altos e nota pelo menos 70?}
+    Decisao -->|nao| Reprovado[rejected]
+    Decisao -->|sim| Aprovado[approved - catalogo com executable false]
+    Aprovado --> Auditoria[Outras elegiveis refazem e comparam o hash]
+    Reprovado --> Auditoria
+    Auditoria -->|igual| Ok[Resultado confirmado]
+    Auditoria -->|diferente| Disputa[disputed - fora do catalogo]
 ```
 
-### Entrada, identidade e sorteio
+### Entrada e identidade
 
-Extensoes aceitas: .py/.txt; limite de 1.048.576 bytes de codigo. O corpo HTTP
-permite overhead, mas nao aumenta esse limite. UTF-8 invalido, controles binarios,
-texto vazio e sintaxe invalida nao produzem aprovacao. O nome externo nao e
-usado como caminho no scanner: o analisador cria seu arquivo temporario.
-ast.parse constroi AST; nao faz execucao/importacao do programa.
+Extensoes aceitas: .py/.txt; limite de 921.600 bytes (900 KiB) de codigo,
+para caber num ConfigMap no namespace da revisora. UTF-8 invalido, controles
+binarios, texto vazio e sintaxe invalida nao produzem aprovacao. O nome
+externo nao e usado: o Job recebe sempre `submission.py`. `ast.parse`
+constroi AST; nao faz execucao/importacao do programa.
 
-A organizacao da autora vem de Settings, nunca do pedido. Com TUDELFT autora
-e UVA/VU/TUDELFT selecionadas, elegiveis sao UVA e VU. Somente TUDELFT nao tem
-revisora independente e e recusado.
-
-O sorteio usa seed criptografica, elegiveis ordenadas e sha256-rank-v1. O evento
-permite reproduzir a escolha; nao e protocolo descentralizado nem prova contra
-um administrador malicioso que escolhe outra seed.
+A organizacao da autora vem do certificado Fabric da identidade `researcher`
+(TUDELFT). Com UVA/VU/TUDELFT selecionadas, elegiveis sao UVA e VU. Somente
+TUDELFT nao tem revisora independente e e recusado.
 
 ### Deduplicacao
 
-code_hash e unico, inclusive sob envios concorrentes e queued/running. Um
-reenvio conserva revisora/resultado. So quebras CRLF/CR sao normalizadas para
-LF: espacos/comentarios e outras alteracoes continuam relevantes. A CLI de
-analise avulsa pode repetir scans para comparar imagens, sem registrar catalogo.
+code_hash e unico no ledger: um segundo SubmitCode com o mesmo hash e
+recusado (`conflict`) e a API devolve o registro existente com `reused`. So
+CRLF/CR sao normalizados para LF: espacos/comentarios continuam relevantes.
 
-### Isolamento e regras
+### Isolamento do Job de analise
 
-| Controle Docker | Configuracao |
+| Controle | Configuracao |
 | --- | --- |
-| Imagem | Inspecionada e iniciada por ID imutavel. |
-| Rede/portas | network none, sem portas. |
-| Usuario | UID/GID 10001, nao root. |
-| Filesystem | Root readOnly; /tmp tmpfs de 128 MiB, noexec/nosuid/nodev. |
-| Privilegios | Todas as capabilities removidas, no-new-privileges. |
-| Recursos | 1 CPU, 768 MiB sem swap adicional e 128 processos. |
-| Tempo | Timeout interno e prazo externo. |
-| Mounts | Nenhum arquivo do host, dataset, token ou Docker socket. |
-| Limpeza | Container removido no finally, inclusive apos erros tratados. |
+| Onde | Namespace da organizacao sorteada, criado pelo agente dela. |
+| Rede | NetworkPolicy sem ingress e sem egress (nem DNS nem API Kubernetes). |
+| Usuario | UID/GID 20001, exclusivo do analisador. |
+| Processos | `ulimit -u 128` por UID. |
+| Filesystem | Root readOnly; /tmp em memoria de 128 MiB; entrada readOnly. |
+| Privilegios | Capabilities removidas, sem escalada, seccomp RuntimeDefault, PodSecurity restricted. |
+| Recursos | 1 CPU, 768 MiB, prazo de 150 s, backoffLimit 0. |
+| Credenciais | Sem token Kubernetes, Secrets, datasets ou Docker socket. |
+| Imagem | `imagePullPolicy: Never`; digest conferido pelo agente e pelo chaincode. |
+| Limpeza | Job e ConfigMap apagados pelo agente; TTL de 300 s como reserva. |
 
-O worker controla Docker e e confiavel; o scanner nao recebe esse privilegio.
-Semgrep 1.145.0 e fixado por digest OCI. Regras sao locais, sem download no scan.
-Os controles nao equivalem a Kata/gVisor, que nao foram instalados.
+Semgrep 1.145.0 e fixado por digest OCI na imagem base. Regras sao locais,
+sem download no scan. Os controles nao equivalem a Kata/gVisor.
 
 | Categoria de regra | Severidade |
 | --- | --- |
@@ -534,6 +592,7 @@ sequenceDiagram
     participant A as Agentes das organizacoes
     participant J as Jobs trainer e sidecar
     participant R as RabbitMQ
+    participant L as Ledger Fabric
     Pesquisadora->>H: Escolher built-in e iniciar
     H->>G: POST training/runs com Idempotency-Key
     G->>G: Persistir pedido pendente
@@ -542,7 +601,7 @@ sequenceDiagram
     P->>A: Composicao computeToData
     D->>C: Iniciar execucao autorizada
     D-->>G: UUID real do treino
-    G->>G: Registrar TrainingStarted
+    G->>L: RecordTrainingStart pela identidade researcher
     G-->>H: Execucao criada
     loop Cada rodada
         C->>D: Revalidar politica pelo caminho DYNAMOS
@@ -578,7 +637,9 @@ O frontend envia UUID em Idempotency-Key. Mesmo pedido/chave retorna o treino
 confirmado sem iniciar outro. Chave com parametros diferentes e recusada.
 Timeout pode deixar unknown: nao reenviar cegamente. O operador consulta o
 historico e pode reconciliar com UUID conhecido, conferindo parametros/horario.
-Nao e transacao atomica entre SQLite e Kubernetes ou garantia exactly-once.
+Nao e transacao atomica entre treino e ledger ou garantia exactly-once. Se o
+ledger falhar depois do inicio, a resposta e 503 e repetir o mesmo pedido grava
+o TrainingStarted sem novo treino.
 
 Clientes diretos de 8096 continuam possiveis e fora desse ledger. Revogacao e
 observada na proxima fronteira de revalidacao, nao mata imediatamente um
@@ -621,13 +682,22 @@ Trainer pode ter stdout vazio: resultado e transmitido pelo sidecar/agente.
 
 ## 8. Ledger e integridade
 
+O ledger e um canal Hyperledger Fabric (`horus-governance`) com uma copia em
+cada peer. Conceitos, etapas e ameacas estao no
+[documento do ledger](ledger-fabric-e-sast-local.md); aqui ficam os campos e
+os verificadores.
+
 ### Identificadores
 
 | Campo | Significado |
 | --- | --- |
 | code_hash | SHA-256 do texto normalizado. |
 | report_hash | SHA-256 do relatorio canonico. |
-| tx_id / record_hash | ID local de evento / hash encadeado; nao transacao Besu. |
+| tx_id | ID da transacao Fabric (64 hex). Uma transacao pode gerar mais de um evento. |
+| block_number | Bloco em que a transacao foi gravada, informado pelo peer. |
+| validation_code | Resultado da validacao no commit: `VALID` ou o motivo da recusa. |
+| msp_id / organization | Quem assinou a transacao (ex.: VuMSP / VU). |
+| seed | Semente do sorteio, recalculavel a partir dos eventos SeedRevealed. |
 | run_id | UUID real da execucao DYNAMOS. |
 
 ### Nota e determinismo
@@ -646,32 +716,46 @@ contagens, achados ordenados e decisao/motivos. Cada achado tem rule_id, linha,
 coluna, severidade e mensagem fixa, sem snippet ou valor de token encontrado.
 
 JSON canonico usa chaves ordenadas, separadores compactos, UTF-8 e nenhum
-NaN/Infinity. Rules hash usa bytes exatos do arquivo; policy hash usa JSON
-canonico. Organizacao, imagem, horarios e caminhos temporarios ficam fora do
-conteudo hashado. Proveniencia e separada e distingue digest de repositorio
-de ID local Docker. Mesmos texto/regras/politica/motor geram mesmo report_hash.
+NaN/Infinity. Organizacao, imagem, horarios e caminhos ficam fora do conteudo
+hashado. Mesmos texto/regras/politica/motor geram o mesmo report_hash em
+qualquer organizacao: e isso que permite a auditoria por re-execucao.
 
-### Eventos e verificadores
+O chaincode **recalcula** contagens, nota, decisao e motivos a partir dos
+achados e da politica acordada, e recusa achados fora do conjunto de regras.
 
-Envelope: version, sequence, tx_id local-*, event_type, recorded_at, payload,
-previous_hash e record_hash. O hash exclui apenas o proprio record_hash.
+### Eventos
 
-| Evento | Conteudo permitido |
+| Evento | Assinado por | Conteudo |
+| --- | --- | --- |
+| ConfigInitialized | admin TUDELFT | Hash da configuracao, regras, politica, Semgrep e digests das imagens. |
+| CodeSubmitted | researcher | code_hash, pseudonimo do certificado, organizacao, selecionadas e elegiveis. |
+| SeedCommitted | agente elegivel | Compromisso SHA-256 do segredo. |
+| SeedRevealed | agente elegivel | Segredo revelado. |
+| DrawForced | agente que revelou | Organizacoes que nao revelaram no prazo. |
+| ReviewerSelected | ultimo a revelar (ou quem forcou) | Revisora, elegiveis, excluida, inadimplentes, seed e versao do sorteio. |
+| CodeAnalyzed | revisora | report_hash, nota, contagens, decisao, digest da imagem, hashes de regras/politica, Semgrep. |
+| CodeValidated / CodeRejected | revisora | code_hash, report_hash e decisao. |
+| AlgorithmRegistered | revisora | algorithm_id `submitted-<hash>`, nota, origem semgrep, executable false. |
+| AnalysisFailed | revisora | Codigo do erro (ex.: invalid_python). |
+| AnalysisAudited | auditora | report_hash obtido, esperado e se coincide. |
+| TrainingStarted | researcher | run_id, algorithm_id, organizacoes. |
+
+Nome pessoal, fonte e lista de achados nao vao aos eventos. O texto do codigo
+fica numa chave propria do estado do canal e o relatorio completo dentro do
+registro da submissao.
+
+### Verificadores
+
+| Verificador | O que confere |
 | --- | --- |
-| CodeSubmitted | code_hash, pseudonimo e organizacao da autora. |
-| ReviewerSelected | code_hash, revisora, elegiveis, excluida, seed e selection_version. |
-| CodeAnalyzed | code_hash, revisora, imagem/ID/digest/tipo, hashes regras/politica, Semgrep, report_hash, nota e contagens. |
-| CodeValidated / CodeRejected | code_hash, report_hash e decision. |
-| AlgorithmRegistered | algorithm_id, hashes quando aplicaveis, nota, origem e executable; inclui built-in. |
-| TrainingStarted | run_id, algorithm_id e organizations. |
+| Verify report (`POST /reports/{hash}/verify`) | SHA-256 dos bytes do relatorio = report_hash gravado; a transacao CodeAnalyzed esta num bloco com `VALID`; lista auditorias e disputa. |
+| Chain head (`POST /ledger/verify`) | Altura e hash do ultimo bloco no peer da TUDELFT e configuracao ativa. |
+| `python3 tools.py ledger verify` | Mesma altura, mesmo hash e mesma configuracao nos peers de UVA, VU e TUDELFT. |
+| Detalhe de transacao (`GET /ledger/transactions/{tx}`) | Bloco, validation_code e eventos daquela transacao. |
+| Agente ao iniciar | Configuracao do ledger = copia local da organizacao; senao recusa trabalhar. |
 
-Nome pessoal, fonte e lista de achados nao vao ao payload. O timestamp do
-evento participa da cadeia; o relatorio SAST deterministico e outro objeto.
-
-Verify chain recalcula hashes/sequencia, referencias e ancora. Verify report
-compara o relatorio salvo com CodeAnalyzed de cadeia verificada. Leitura normal
-do relatorio tambem verifica integridade. Hash fornecido por um atacante junto
-do relatorio nao autentica nada sem referencia confiavel.
+Diferente do SQLite anterior, nao existe "ancora" a reescrever: alterar o
+historico exigiria alterar os peers das tres organizacoes.
 
 ## 9. Demonstracao manual
 
@@ -700,20 +784,20 @@ usar kc get jobs -A sem filtro para inventario completo.
 | Passo | Acao | Esperado |
 | --- | --- | --- |
 | 1 | Abrir /training. | Identidade do servidor, isolamento verificado, built-in no catalogo. |
-| 2 | Selecionar UVA/VU/TUDELFT e enviar horus-governance/examples/clean.py. | queued/running, depois approved, 100 e sem achados. |
-| 3 | Conferir sorteio. | TUDELFT excluida; revisora UVA ou VU. |
-| 4 | Reenviar mesmo texto, inclusive alterando apenas CRLF/LF. | Mesmo hash, revisora e resultado; sem outro CodeAnalyzed. |
+| 2 | Selecionar UVA/VU/TUDELFT e enviar horus-governance/examples/clean.py. | drawing, assigned e approved com 100, sem achados (cerca de 20 s). |
+| 3 | Conferir as etapas na tela e `kc get jobs -A -l app=horus-sast -w`. | Commits e reveals de UVA e VU; revisora UVA ou VU; Job SAST no namespace dela; auditoria da outra. |
+| 4 | Reenviar mesmo texto, inclusive alterando apenas CRLF/LF. | Mesmo hash, revisora e resultado (reused); nenhuma transacao nova. |
 | 5 | Alterar um caractere real. | Outro code_hash e novo fluxo. |
 | 6 | Enviar examples/unsafe.py somente como texto. | rejected, 0, quatro altos e um medio; token falso ausente do relatorio. |
 | 7 | Escolher novo algoritmo aprovado. | Catalog only, aviso e Start training desabilitado. |
 | 8 | Voltar ao built-in, tres rodadas/duas epocas. | Inicio pela governanca e UUID real. |
 | 9 | Acompanhar Pods e Horus. | Tres Jobs por rodada, nove no total, resultados nos agentes, progresso 3/3. |
 | 10 | Baixar modelo. | Modelo global autorizado, sem CSV ou predicoes individuais. |
-| 11 | Abrir Analysis transaction. | Dados, record_hash e previous_hash. |
+| 11 | Abrir Analysis transaction. | Bloco, VALID, MSP da revisora e conteudo dos eventos. |
 | 12 | Buscar code_hash e filtrar tipo/pagina. | Historia daquela submissao. |
-| 13 | Verify chain / Verify report. | Resultado valido; report requer analise concluida. |
+| 13 | Chain head / Verify report e `tools.py ledger verify`. | Cabecas iguais nos tres peers; relatorio com hash correto e transacao VALID. |
 | 14 | Buscar TrainingStarted. | Mesmo UUID do treino governado. |
-| 15 | Abrir Dashboard. | Ledger/worker reais; demais status identificados demo. |
+| 15 | Abrir Dashboard. | Status do ledger Fabric real; demais status identificados demo. |
 
 Nao executar unsafe.py para testar upload. Nao matar processos para atrasar
 uma demonstracao. Para testar cancelamento, iniciar OUTRA execucao e clicar
@@ -752,14 +836,16 @@ ledger; nao inventar um code_hash de submissao para esse algoritmo.
 ```mermaid
 flowchart LR
     subgraph Ativo[Disponivel agora]
-        Servicos[API, worker e servicos Go/Python] --> Logs[stdout e stderr]
+        Servicos[API, agentes, chaincode, peers e servicos Go/Python] --> Logs[stdout e stderr]
         Logs --> CLI[docker logs e kubectl logs]
-        Worker[Worker] --> Heartbeat[Heartbeat e status]
-        Ledger[Eventos e relatorios] --> Verify[Verificadores de integridade]
+        Ledger[Canal Fabric] --> Cabeca[Altura e hash por peer - ledger verify]
+        Ledger --> Eventos[Eventos, blocos e validation_code]
+        Relatorios[Relatorios SAST] --> Verify[Verify report e auditorias]
         Pods[Pods e Jobs] --> Estado[API Kubernetes - estados, eventos e probes]
         ML[Treinamento] --> Historico[round_history, accuracy e validation loss]
         Rede[Cilium] --> Hubble[Hubble local sem Relay/UI]
         Testes[verify e testes integrados] --> Evidencias[Relatorios pontuais]
+        Fabric[peer0 e orderer0] --> Metricas[Endpoint Prometheus 9443 sem coletor]
     end
     subgraph Ausente[Nao instalado]
         Prom[Prometheus e exporters]
@@ -770,6 +856,7 @@ flowchart LR
         Relay[Hubble Relay/UI]
     end
     Estado -.->|requer instalacao| Prom
+    Metricas -.->|requer scrape| Prom
     Logs -.->|requer coleta central| Loki
     Prom -.-> Graf
     Loki -.-> Graf
@@ -783,18 +870,15 @@ flowchart LR
 ```bash
 "$DOCKER_BIN" ps --format 'table {{.Names}}\t{{.Status}}'
 "$DOCKER_BIN" logs --tail=100 horus-governance-api
-"$DOCKER_BIN" logs --tail=100 horus-governance-worker
-"$DOCKER_BIN" ps --filter name=horus-sast
 "$DOCKER_BIN" stats --no-stream
 kc get deployments,statefulsets,daemonsets -A
 kc get services,pvc -A
 kc get events -A --sort-by=.lastTimestamp
 ```
 
-Acrescentar -f a logs para acompanhar. Scanners podem sumir antes do comando
-manual: normal apos o resultado. Imagem instalada nao e container em execucao.
-docker stats mostra containers Docker, incluindo o NO kind, nao cada Pod.
-manage.py status filtra labels e nao substitui kc get pods -A para inventario.
+Acrescentar -f a logs para acompanhar. docker stats mostra containers Docker,
+incluindo o NO kind, nao cada Pod. manage.py status filtra labels de treino e
+nao substitui kc get pods -A para inventario.
 
 ```bash
 kc logs deployment/api-gateway -n training-system -c api-gateway --tail=100
@@ -804,9 +888,26 @@ kc logs deployment/training-coordinator -n training-system -c coordinator --tail
 kc logs deployment/training-agent -n tudelft -c agent --tail=100
 ```
 
-No agente, procurar Training result received through DYNAMOS sidecar e o
-prefixo do Job. Combinar logs, estado e historico, sem exigir linha por epoca.
---previous mostra logs da instancia anterior de um container reiniciado.
+No agente de treino, procurar Training result received through DYNAMOS
+sidecar e o prefixo do Job. Combinar logs, estado e historico, sem exigir
+linha por epoca. --previous mostra logs da instancia anterior.
+
+### Ledger e analise SAST
+
+```bash
+kc get pods -A -l app=horus-ledger -o wide
+kc get jobs -A -l app=horus-sast -w
+kc logs -n uva deploy/horus-sast-agent -f
+kc logs -n vu deploy/horus-chaincode --tail=50
+kc logs -n tudelft deploy/peer0 --tail=100 | grep "Committed block"
+kc logs -n tudelft deploy/horus-ledger-gateway --tail=50
+cd "$PROJECT/horus-governance" && python3 tools.py ledger verify
+```
+
+O agente registra cada passo com o prefixo do code_hash: committed, revealed,
+recorded signed analysis, audit recorded. `MVCC_READ_CONFLICT` e normal
+quando duas organizacoes escrevem a mesma submissao no mesmo bloco; o agente
+repete em 3 s. Jobs SAST duram segundos; `-w` e a forma de ve-los.
 
 ### Broker e descoberta
 
@@ -832,16 +933,18 @@ kc get job "$JOB" -n uva -o jsonpath='{range .spec.template.spec.containers[?(@.
 kc get networkpolicy -A
 kc auth can-i get secrets -n uva --as system:serviceaccount:uva:training-agent
 kc auth can-i get persistentvolumeclaims -n vu --as system:serviceaccount:uva:training-agent
+kc auth can-i create jobs -n vu --as system:serviceaccount:uva:horus-sast-agent
+kc auth can-i get secrets -n uva --as system:serviceaccount:uva:horus-sast-agent
 ```
 
-Esperado: trainer/sidecar, automount=false, dataset readOnly=true e RBAC no.
-Um no pode retornar exit code diferente de zero: e a negacao esperada.
-Nao usar cat no dataset ou imprimir Secrets/ConfigMaps como demonstracao.
+Esperado: trainer/sidecar, automount=false, dataset readOnly=true e RBAC no
+(inclusive para o agente SAST fora do proprio namespace e para Secrets). Um no
+pode retornar exit code diferente de zero: e a negacao esperada.
 
 Workers de treino podem falar com DNS, agente local e RabbitMQ conforme as
-NetworkPolicies; sao diferentes dos scanners sem rede. Agentes tem acesso
-maior para criar Jobs e acessar broker/etcd/API. Probes nao provam isolamento
-absoluto de administradores ou de todas as filas.
+NetworkPolicies; Jobs SAST nao falam com nada. Peers e orderers so falam entre
+si e com clientes do ledger das tres organizacoes. Probes nao provam
+isolamento absoluto de administradores.
 
 ### Governanca e sinais ausentes
 
@@ -859,50 +962,55 @@ curl -fsS "http://127.0.0.1:5175/governance-api/submissions/$CODE_HASH" | python
 curl -fsS -X POST "http://127.0.0.1:5175/governance-api/reports/$CODE_HASH/verify" | python3 -m json.tool
 ```
 
-worker_ready admite heartbeat de ate 180 segundos: pode ficar true algum tempo
-apos parada. Nao comprova que Docker ou treino estejam saudaveis. Pod Ready
-nao comprova autorizacao de negocio. verify.py e testes sao pontuais, nao SOC.
+`ledger_ready=true` significa que o gateway respondeu e a configuracao existe;
+nao prova que os tres agentes estao vivos (conferir os Pods). Pod Ready nao
+comprova autorizacao de negocio. verify.py e testes sao pontuais, nao SOC.
 
 OpenCensus esta no Go, mas collector.core.svc.cluster.local:55678 nao foi
-instalado; nao ha traces ponta a ponta armazenados apenas por existir a variavel.
-Nao ha metrics-server para kubectl top. Accuracy nao e CPU/memoria; graficos
-mock nao sao metricas Prometheus. Nao ha retencao de logs central no Loki.
+instalado. Nao ha metrics-server para kubectl top. Accuracy nao e CPU/memoria;
+graficos mock nao sao metricas Prometheus. Nao ha retencao central de logs.
 
-Evidencias seguras: versao Git, digest das imagens, motor, hashes de regras/
-politica/codigo/relatorio, tx_id, seed/revisora, UUID do treino, estado e Jobs.
-Nao publicar fonte, nomes, tokens, Secrets, capacidades ou CSV dos datasets.
+Evidencias seguras: versao Git, digests das imagens, motor, hashes de regras/
+politica/codigo/relatorio, tx_id, bloco, seed/revisora, auditorias, UUID do
+treino, estado e Jobs. Nao publicar fonte, nomes, tokens, Secrets, chaves do
+volume ledger-crypto, capacidades ou CSV dos datasets.
 
 ## 11. Endpoints
 
 Rotas relativas a /governance-api no Vite ou a 8097 diretamente. A API direta
-precisa de bearer token, exceto /health. Exemplos usam proxy para nao exibir
-credenciais. Swagger/OpenAPI publicos nao estao habilitados.
+precisa de bearer token, exceto /health. Swagger/OpenAPI publicos nao estao
+habilitados.
 
 | Metodo | Rota | Papel |
 | --- | --- | --- |
 | GET | /health | Processo responde; nao comprova toda a stack. |
-| GET | /me | Identidade imposta pelo servidor. |
-| GET | /status | Cadeia, backend e heartbeat. |
-| GET | /algorithms | Catalogo e executable. |
-| GET | /submissions | Ate 50 submissões recentes, sem codigo fonte. |
+| GET | /me | Identidade exibida pelo servidor. |
+| GET | /status | Cabeca do canal vista pela TUDELFT, ledger_ready e blockchain=true. |
+| GET | /algorithms | Built-in e aprovados nao disputados do ledger; executable. |
+| GET | /submissions | Ate 50 submissoes recentes, sem codigo fonte. |
 | POST | /submissions | JSON code/organizations ou multipart file/organizations. |
-| GET | /submissions/{code_hash} | Status, sorteio, relatorio, proveniencia e tx_ids. |
-| POST | /reports/{code_hash}/verify | Relatorio versus CodeAnalyzed. |
+| GET | /submissions/{code_hash} | Estado, sorteio, relatorio, assinatura, auditorias, disputa e tx_ids. |
+| POST | /reports/{code_hash}/verify | Hash do relatorio, transacao VALID e auditorias. |
 | GET | /ledger/events | event_type/code_hash, offset e limit de 1 a 100. |
-| GET | /ledger/events/{tx_id} | Detalhe verificado. |
-| POST | /ledger/verify | Cadeia e ancora. |
+| GET | /ledger/transactions/{tx_id} | Bloco, validation_code e eventos da transacao. |
+| POST | /ledger/verify | Altura e hash do ultimo bloco. |
 | POST | /training/runs | Inicio built-in; requer header Idempotency-Key UUID. |
-| GET | /training/requests/{id} | Estado da solicitacao idempotente. |
+| GET | /training/requests/{id} | Estado da solicitacao idempotente e ledger_tx. |
 | POST | /training/requests/{id}/reconcile?run_id={uuid} | Reconciliacao explicita de inicio incerto. |
 
-Campos extras como researcher_org/reviewer sao recusados. Organizations e
-selecao de participantes, nao substituicao da identidade. Em multipart esse
-campo e um array JSON. Nova submissao retorna 202; duplicata 200 com reused.
-Para decisao ler status/decision, nao inferir aprovacao de HTTP 200.
+Gateway do ledger (`127.0.0.1:8098`, token em `.local/ledger/gateway-token`):
+`GET /health`, `/status`, `/config`, `/submissions`, `/submissions/{hash}`,
+`/events`, `/transactions/{tx}`; `POST /submissions`, `/training-starts`.
+Erros do chaincode vem como `{"kind": ..., "detail": ...}` e viram 422
+(invalid), 403 (forbidden), 409 (conflict), 404 (notfound) ou 503.
 
-CLI exit 0 significa analise concluida, mesmo se rejected; erro retorna 2.
-No proxy /training-api permanecem catalog, runs, runs/{id}, cancelamento e
-modelo da API existente. Eles nao foram transferidos para outro motor.
+Campos extras como researcher_org/reviewer sao recusados pela API e pelo
+gateway. Nova submissao retorna 202; duplicata 200 com reused. Para decisao
+ler status/decision/disputed, nao inferir aprovacao de HTTP 200.
+
+CLI `tools.py analyze` (operador) continua rodando o analisador em Docker
+local para comparar imagens; nao grava nada no ledger. Exit 0 significa
+analise concluida, mesmo se rejected; erro retorna 2.
 
 ## 12. Testes automatizados e novos casos
 
@@ -913,19 +1021,25 @@ cd "$PROJECT/horus-governance"
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.lock
 .venv/bin/python -m unittest discover -s tests -v
+(cd ledger && go test ./...)
 ```
 
 Sem flags, testes Docker/live sao pulados explicitamente. OK com skipped nao
-comprova que o ambiente completo foi exercitado.
+comprova que o ambiente completo foi exercitado. O build da imagem horus-ledger
+tambem roda `go test ./...`.
 
 | Nivel/gate | Ambiente e efeito |
 | --- | --- |
-| test_ledger / test_governance / test_api / test_training_bridge | Estado temporario e upstream simulado; nao altera ledger ativo ou cria treino. |
+| ledger/governance (Go) | Regras do chaincode em memoria. |
+| ledger/internal/agent (Go) | Tres agentes contra o chaincode real em memoria, inclusive revisora desonesta e nova tentativa. |
+| ledger/internal/httpgw (Go) | Token e mapeamento de erros do gateway. |
+| test_governance / test_api / test_training_bridge | API com ledger falso (tests/fake_ledger.py) e upstream simulado; nao toca o ledger real. |
 | test_sast sem gate | Contratos de texto, nota e hash, sem Semgrep real. |
-| HORUS_SAST_DOCKER_TESTS=1 | Scanners reais sem rede nas tres organizacoes; containers removidos. |
-| HORUS_GOV_LIVE_TESTS=1 | API/Vite/worker reais; persiste submissões/eventos locais, reutiliza duplicatas. |
-| HORUS_GOV_LIVE_TRAINING=1 junto de LIVE_TESTS | Cria treino real, nove Jobs e evento TrainingStarted. |
-| manage.py verify | Probes reais e controle temporario do gate; sem treino ativo. |
+| HORUS_SAST_DOCKER_TESTS=1 | Scanners reais em Docker local nas tres organizacoes. |
+| HORUS_GOV_LIVE_TESTS=1 | Ledger, agentes, Jobs SAST e API reais; grava submissoes novas no canal. |
+| HORUS_GOV_LIVE_TRAINING=1 junto de LIVE_TESTS | Cria treino real, nove Jobs e TrainingStarted no ledger. |
+| tools.py ledger verify | Cabecas e configuracao nos tres peers. |
+| manage.py verify | Probes reais de treino e controle temporario do gate; sem treino ativo. |
 | test_integrated.py do treinamento | Revogacao temporaria de acordo e treino; sem outras execucoes. |
 
 ### SAST e uso real
@@ -935,11 +1049,15 @@ python3 tools.py build
 HORUS_SAST_DOCKER_TESTS=1 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Com servicos/Vite rodando, governanca real sem treino:
+Com ledger, gateway encaminhado, API e Vite rodando:
 
 ```bash
 HORUS_GOV_LIVE_TESTS=1 .venv/bin/python -m unittest discover -s tests -p test_live.py -v
 ```
+
+Para chamar uma API sem Vite: `HORUS_GOV_LIVE_API=http://127.0.0.1:8097`
+e `HORUS_GOV_LIVE_TOKEN=$(cat .local/api-token)`. O teste acrescenta um
+comentario unico ao codigo, entao cada execucao percorre o fluxo completo.
 
 Para criar tambem treino real de tres rodadas:
 
@@ -948,12 +1066,7 @@ HORUS_GOV_LIVE_TESTS=1 HORUS_GOV_LIVE_TRAINING=1 \
   .venv/bin/python -m unittest discover -s tests -p test_live.py -v
 ```
 
-O teste de treino pula se detectar outro ativo. Nao remover banco para um
-teste parecer novo; usar outra entrada revisada ou instancia com estado proprio.
-
 ### Treinamento existente e build
-
-Voltar a raiz, sem treinos ativos para os comandos de isolamento/revogacao:
 
 ```bash
 cd "$PROJECT"
@@ -963,16 +1076,12 @@ python3 configuration/federated-training/test_integrated.py
 ```
 
 O teste integrado altera/restaura acordo sintetico em finally. Se for morto
-abruptamente, conferir o acordo antes de voltar a demonstrar. test_run.py pode
-testar treino diretamente em 8096, mas nao gera TrainingStarted da governanca.
+abruptamente, conferir o acordo antes de voltar a demonstrar.
 
 ```bash
 python3 -m venv /tmp/scattered-training-tests
 /tmp/scattered-training-tests/bin/pip install -r python/federated-training/requirements.txt
 /tmp/scattered-training-tests/bin/python -m unittest discover -s python/federated-training -p 'test_*.py' -v
-```
-
-```bash
 cd "$PROJECT/go"
 go test ./pkg/training ./cmd/agent ./cmd/api-gateway ./cmd/orchestrator ./cmd/policy-enforcer ./cmd/sidecar
 cd "$PROJECT"
@@ -986,14 +1095,29 @@ distinto de erro de compilacao.
 
 | Arquivo | Exemplos |
 | --- | --- |
+| ledger/governance/contract_test.go | Nova regra do chaincode, nova recusa, novo evento. |
+| ledger/internal/agent/agent_test.go | Comportamento de agentes: atrasos, falhas, desonestidade. |
 | tests/test_sast.py | Regra/alias, segredo redigido, Unicode/binario, determinismo e isolamento. |
-| tests/test_governance.py | Elegiveis, dedup concorrente, error, catalogo e relatorio adulterado. |
-| tests/test_ledger.py | Edicao, exclusao, referencia anterior, ancora e campos proibidos. |
-| tests/test_api.py | JSON/multipart, extensao, limite, identidade, Origin e autenticacao. |
-| tests/test_training_bridge.py | Timeout, repeticao de chave, parametros diferentes e reconciliacao. |
+| tests/test_governance.py | Elegiveis, reuso, limites, catalogo, verificacao de relatorio. |
+| tests/test_api.py | JSON/multipart, extensao, limite, identidade, Origin, autenticacao e rotas do ledger. |
+| tests/test_training_bridge.py | Timeout, repeticao de chave, reconciliacao e queda do ledger. |
 | tests/test_live.py | Uso de servicos reais, polling limitado, modelo e evento. |
 
-Exemplo para acrescentar a classe GovernanceTests existente:
+Exemplo de regra de chaincode (Go), dentro de `contract_test.go`:
+
+```go
+func TestResearcherCannotRecordAnalysis(t *testing.T) {
+	w := newWorld(t)
+	submission := w.researcher().submission(t, "SubmitCode", "value = 1\n", `["UVA","TUDELFT"]`)
+	report, hash := cleanReport(w.local, submission.CodeHash)
+	if _, err := w.researcher().call("RecordAnalysis", submission.CodeHash, report, hash,
+		w.local.AnalyzerImages["UVA"]); kind(err) != "forbidden" {
+		t.Fatalf("expected forbidden, got %v", err)
+	}
+}
+```
+
+Exemplo para a classe GovernanceTests (Python):
 
 ```python
 def test_author_organization_only_has_no_reviewer(self):
@@ -1001,33 +1125,18 @@ def test_author_organization_only_has_no_reviewer(self):
         self.service.submit(b"weight = 1\n", ["TUDELFT"])
 ```
 
-Exemplo para a classe com gate Docker/import de analyze_in_docker ja existente:
-
-```python
-def test_dynamic_evaluation_is_rejected(self):
-    result = analyze_in_docker(b'eval("1 + 1")\n', "UVA")
-    self.assertEqual(result["report"]["decision"], "rejected")
-```
-
 Codigo potencialmente inseguro e sempre bytes/texto, nunca importado/executado
-pelo teste. Usar TemporaryDirectory para alterar banco/ancora; nao corromper
-o ledger real. Casos adicionais: .exe renomeado, 1 MB + 1 byte, invalid UTF-8,
-campos extras, nosemgrep e repeticao simultanea.
+pelo teste. Nao usar o canal real para testes de adulteracao: use o ledger em
+memoria.
 
-Trecho para integrar ao seu runner Playwright, nao um npm script ja instalado:
+Trecho para integrar ao seu runner Playwright, nao um npm script instalado:
 
 ```javascript
 await page.goto("http://127.0.0.1:5175/training");
-await page.getByLabel("Python code", { exact: true }).fill("weight = 1\n");
+await page.getByLabel("Python code", { exact: true }).fill(`weight = 1  # ${Date.now()}\n`);
 await page.getByRole("button", { name: "Submit for validation", exact: true }).click();
-await page.getByText("Analysis: approved", { exact: false }).waitFor();
+await page.getByText("Approved", { exact: true }).waitFor({ timeout: 120000 });
 ```
-
-Testar texto/arquivo, aprovar/reprovar/reutilizar, algoritmo novo bloqueado,
-links, filtros, verificadores e celular. Esperar estado esperado, nao pausas
-fixas. Para historicos, getByRole('combobox', {name: ...}) e um seletor util.
-Nao ha suite Playwright completa versionada; a conferencia visual anterior
-foi executada pelo navegador integrado do ambiente.
 
 ## 13. Diagnostico, recuperacao e backup
 
@@ -1035,23 +1144,29 @@ foi executada pelo navegador integrado do ambiente.
 | --- | --- |
 | Docker indisponivel | Desktop ligado/executavel correto; neste Mac evitar alias para Podman. |
 | Porta ocupada | Processo existente; nao iniciar copias nem matar desconhecidos. |
-| Proxy 500 / API unavailable | Vite correto, port-forward 8096 e servico 8097. |
+| Proxy 500 / API unavailable | Vite correto, port-forwards 8096/8098 e servico 8097. |
+| "Ledger gateway is unreachable" | Port-forward 8098 caiu (ex.: gateway reiniciou): `python3 tools.py ledger forward`. |
+| "Ledger gateway credentials are unavailable" | Falta `.local/ledger/gateway-token`: rodar `ledger setup`. |
 | HTTP 401 | Credencial ausente/incorreta; nao remover autenticacao. |
-| HTTP 403 | Origin ou politica/capacidade negada. |
-| HTTP 409 | Integridade ou chave pendente/incerta; ler detalhe e estado. |
+| HTTP 403 | Origin, politica/capacidade ou papel Fabric negado. |
+| HTTP 409 | Hash ja submetido, chave idempotente pendente ou configuracao diferente. |
 | HTTP 413 | Corpo HTTP excedido; codigo tambem tem limite proprio. |
-| HTTP 422 | Extensao, UTF-8, parametros, campo extra, sem revisora ou algoritmo nao executavel. |
-| queued nao progride | Heartbeat/logs do worker e imagens SAST. |
-| error na submissao | Erro/timeout/interrupcao; diferente de rejected pela politica. |
-| Sem novo scanner ao reenviar | Deduplicacao esperada. |
+| HTTP 422 | Extensao, UTF-8, tamanho acima de 900 KiB, campo extra, sem revisora ou algoritmo nao executavel. |
+| drawing nao progride | Pods horus-sast-agent das elegiveis; logs; depois de 600 s quem revelou fecha o sorteio. |
+| assigned nao progride | Logs do agente da revisora e `kc get jobs -n <ns> -l app=horus-sast`. |
+| error com scanner_unavailable | Infraestrutura; a revisora tenta de novo ate 3 vezes por ciclo de vida do Pod. |
+| error com invalid_python | Definitivo: o texto nao e Python valido. |
+| disputed | Uma re-analise divergiu: preservar evidencias, comparar digests e regras. |
+| Agente: "refusing to operate" | Configuracao do ledger difere da copia local; nao forcar. |
+| Peer 0/1 Ready | Prontidao usa a porta 7051; ver logs do peer e da matricula. |
+| ledger verify com cabecas diferentes | Peer atrasado sincronizando; repetir. Persistindo, investigar o peer. |
 | Historico presente e Pod NotFound | TTL pode ter removido o Job. |
 | Pending | describe para recursos, volume e agendamento. |
 | CrashLoopBackOff | Logs do container e --previous. |
-| ImagePullBackOff | Imagem/importacao kind, sem substituicao arbitraria. |
+| ErrImageNeverPull | Imagem nao carregada no kind: `ledger setup --skip-build` recarrega. |
 | DeadlineExceeded | Prazo; investigar saturacao/inicializacao. |
 | training-seed falhou | Logs antes de recriar somente Job; nao apagar dataset/PVC. |
 | Isolation unverified | Verificar sem treino; nao alterar gate manualmente. |
-| Verify falhou | Preservar evidencia, parar operacoes e restaurar backup confiavel. |
 
 Observacao de portas no Mac:
 
@@ -1059,18 +1174,23 @@ Observacao de portas no Mac:
 lsof -nP -iTCP:5175 -sTCP:LISTEN
 lsof -nP -iTCP:8096 -sTCP:LISTEN
 lsof -nP -iTCP:8097 -sTCP:LISTEN
+lsof -nP -iTCP:8098 -sTCP:LISTEN
 ```
 
-Para reiniciar governanca, esperar analises/treinos antes de stop/start.
-Analise interrompida e marcada error no proximo inicio; nao e aprovada nem
-reexecutada automaticamente. Dedup impede nova revisao silenciosa do mesmo texto.
+Reiniciar a API nao afeta analises: elas acontecem nos agentes, e o estado
+esta no ledger. Reiniciar um agente no meio de um sorteio e seguro: o segredo
+esta no volume dele.
 
 ### Backup
 
-Preservar .local/ da governanca e treinamento, PVCs/modelos e configuracao/
-versao do experimento. Git/imagem Docker/modelo baixado nao substituem tudo isso.
+Preservar .local/ da governanca e do treinamento, os PVCs do ledger
+(`ledger-crypto`, `ledger-ca`, `ledger-peer-data`, `ledger-orderer-data`,
+`ledger-agent-state`) e os PVCs de treino. Git/imagem Docker/modelo baixado nao
+substituem tudo isso. Em producao cada organizacao faz backup das proprias
+chaves e do proprio peer; a replicacao entre peers ja protege o historico
+contra perda de UM peer, nao contra perda das chaves.
 
-Backup de governanca, somente apos terminar operacoes e parar API/worker:
+Backup de .local da governanca:
 
 ```bash
 cd "$PROJECT/horus-governance"
@@ -1082,13 +1202,9 @@ cp -R .local "$BACKUP/governance-local"
 python3 tools.py start
 ```
 
-O backup contem fonte e tokens: manter privado e fora do Git. Banco e ancora
-devem corresponder ao mesmo snapshot. Backup/exportacao de PVC requer
+O backup contem tokens: manter privado e fora do Git. Backup de PVC requer
 procedimento proprio; nao ha comando unico de backup completo do cluster.
-
-Nao restaurar sobre instancia ativa. Queda entre commit e escrita da ancora
-pode causar recusa fail-closed. Nao ha reparo que aceite automaticamente outro
-head; reescrever a ancora para deixar o botao verde invalida a evidencia.
+`ledger down --purge` apaga o historico: nao usar para "consertar" um ledger.
 
 ### Inicio incerto de treino
 
@@ -1098,70 +1214,86 @@ head; reescrever a ancora para deixar o botao verde invalida a evidencia.
 4. Operador pode reconciliar com esse UUID; parametros/horario sao conferidos.
 5. Sem evidencia suficiente, manter incerto e investigar.
 
+Se o treino comecou mas o ledger estava fora do ar, a resposta e 503 dizendo
+isso; repetir o mesmo pedido (mesma Idempotency-Key) grava TrainingStarted
+sem iniciar outro treino.
+
 ## 14. Limites conhecidos
 
-- Codigo submetido e persistido fora do ledger; nao afirmar que so seu hash
-  existe no sistema. Relatorio sem snippets ainda revela estrutura do codigo.
-- Ledger e local. Administrador que reescreva banco E ancora nao e impedido;
-  protecao mais forte exige ancoramento externo/Besu e outro modelo de confianca.
-- Tokens locais nao sao OIDC/autenticacao multiusuario/TLS de producao.
-- Clientes diretos de 8096 ficam fora do ledger; nao ha auditoria obrigatoria
-  global, atomicidade distribuida ou exactly-once.
+- As tres organizacoes estao no mesmo cluster kind, administrado por uma
+  pessoa que pode ler os Secrets e volumes de todas. O desenho e o de
+  producao; o isolamento real exige um cluster/operador por organizacao.
+- Orderers Raft toleram queda, nao malicia; endosso MAJORITY com tres
+  organizacoes nao protege contra conluio de duas.
+- O sorteio pode ser repetido pela pesquisadora com variacoes do texto (cada
+  tentativa fica publica). Quem nao revela consegue apenas se excluir. O prazo
+  usa o timestamp da transacao, definido pelo cliente.
+- Assinatura prova quem gravou, nao que o Semgrep rodou; a auditoria cobre
+  isso quando ha outra organizacao elegivel honesta. Com uma elegivel so, nao
+  ha auditoria.
+- A chave da pesquisadora fica no gateway (tudelft), nao no navegador.
+- O texto submetido fica visivel para as tres organizacoes no canal.
+- Tokens locais nao sao OIDC/autenticacao multiusuario/TLS de producao no Mac.
+- Clientes diretos de 8096 ficam fora do ledger; nao ha atomicidade
+  distribuida nem exactly-once entre treino e ledger.
 - SAST pode ter falso positivo/negativo com reflexao, obfuscacao, dependencias
-  e destinos dinamicos. Nota 100 nao prova sigilo ou seguranca de execucao.
+  e destinos dinamicos. Nota 100 nao prova seguranca de execucao.
 - Novos algoritmos continuam bloqueados; nao adicionar import/exec como atalho.
-- Atualizar regras/politica exige estrategia de revalidacao do catalogo antigo.
-- Limite de fila e serializacao nao sao quotas/rate limiting distribuidos.
+- Atualizar regras/politica/imagens SAST exige nova configuracao acordada, sem
+  fluxo de governanca implementado (no sandbox, `ledger down --purge`).
+- `ulimit -u` e por UID e compartilhado entre analises simultaneas no no;
+  `emptyDir` em memoria nao tem noexec.
+- Eventos do ledger SQLite anterior nao foram migrados.
 - Metricas e modelos podem revelar informacoes; secure aggregation e
   differential privacy nao foram implementadas.
 - Tres membros etcd no mesmo no local nao toleram perda desse no.
-- O template SAST Kubernetes nao foi aplicado. PIDs exigem kubelet/runtime;
-  emptyDir nao garante os mesmos flags do tmpfs Docker. ConfigMaps tem overhead.
 - VFL/TTP/FABRIC e ExtremeXP continuam fluxos separados.
 - Falta monitoracao central, alertas, retencao de logs e tracing operacional.
 
 ## 15. Evidencias e checklist
 
-Resultados anteriores, nao nova execucao completa feita para escrever o guia:
+Execucao real de 03/11/2026 (detalhes no
+[documento do ledger, secao 13](ledger-fabric-e-sast-local.md#13-evidencias-da-validacao)):
 
-- Treino horizontal real com tres organizacoes/rodadas, sidecars, RabbitMQ,
-  isolamento, negacao antes da execucao e apos revogacao.
-- Governanca: 35 testes de backend/SAST passaram; dois testes reais de uso/
-  treinamento passaram separadamente com gates explicitos.
-- Limpo aprovado com 100; inseguro reprovado com 0 sem token no relatorio;
-  hashes iguais nas tres organizacoes.
-- Treino governado de referencia: 03702e1f-181b-4116-b513-b01a54338ce5,
-  tres rodadas, modelo global e um TrainingStarted.
-- Interface: texto/arquivo, exclusao de TUDelft, bloqueio de algoritmo novo,
-  links, verificadores e layout desktop/celular.
+- Ledger: canal criado, 3 orderers Raft ativos, 3 peers, chaincode aprovado
+  pelas 3 organizacoes, configuracao gravada; mesma altura e hash nos 3 peers.
+- clean.py: sorteio UVA+VU escolheu VU; Job no namespace vu; assinado por
+  VuMSP; aprovado com 100; UVA reanalisou com o mesmo hash; bloco 19 VALID.
+- unsafe.py: sorteio escolheu UVA; rejeitado com 0 (4 altos, 1 medio); VU
+  reanalisou com o mesmo hash; token falso ausente.
+- Sorteio recalculado a partir dos eventos publicos: igual ao ledger.
+- RBAC e rede do Job SAST conferidos; Pods de treino intactos.
+- Testes: Go OK; Python 37 OK (12 com gate); teste ao vivo com duas
+  submissoes completas em 61 s.
 
-Pods antigos podem ja ter sumido pelo TTL. Teste live de governanca usa API/
-historico/eventos como evidencia e nao precisa gerar arquivo separado de
-relatorio. Relatorios antigos do treino ficam em sua .local/.
+Resultados anteriores mantidos: treino horizontal real com tres
+organizacoes/rodadas; treino governado de referencia
+03702e1f-181b-4116-b513-b01a54338ce5 (antes do ledger Fabric; seu
+TrainingStarted esta no SQLite anterior).
 
 ### Checklist de apresentacao
 
 - [ ] Distinguir funcionalidade real, demo e futura.
-- [ ] Confirmar Docker, contexto, servicos permanentes, proxies e worker.
-- [ ] Mostrar identidade e revisora diferente da autora.
-- [ ] Submeter limpo/inseguro sem executa-los e demonstrar dedup.
-- [ ] Conferir nota, hashes, proveniencia e historia do codigo.
-- [ ] Verificar cadeia/relatorio sem revelar tokens ou fonte sensivel.
+- [ ] Confirmar Docker, contexto, Pods do ledger, port-forwards 8096/8098 e API.
+- [ ] Rodar `tools.py ledger verify` e mostrar as tres cabecas iguais.
+- [ ] Submeter limpo/inseguro sem executa-los; observar commit, reveal e Job SAST.
+- [ ] Mostrar a revisora sorteada, a assinatura (MSP) e a auditoria da outra.
+- [ ] Recalcular o sorteio a partir dos eventos publicos.
+- [ ] Verify report: bloco e VALID; mostrar dedup.
 - [ ] Mostrar algoritmo novo no catalogo com execucao bloqueada.
-- [ ] Iniciar built-in, relacionar UUID a nove Jobs e observar tres rodadas.
-- [ ] Conferir resultado via sidecar/agentes e modelo global.
-- [ ] Relacionar UUID a TrainingStarted; explicar clientes diretos de 8096.
-- [ ] Mostrar mounts/RBAC/rede e broker/etcd saudaveis.
+- [ ] Iniciar built-in, relacionar UUID a nove Jobs e a TrainingStarted no ledger.
+- [ ] Mostrar RBAC/rede do agente e do Job SAST, mounts do trainer.
 - [ ] Encerrar observadores sem excluir cluster/dados.
 
 ### Documentacao complementar
 
+- [Ledger Fabric e SAST local, etapa por etapa](ledger-fabric-e-sast-local.md).
 - [Resumo de governanca e testes](governanca-estrutura-e-testes.md).
 - [Arquitetura detalhada do cluster](arquitetura-atual.md).
 - [Roteiro de observacao de Pods](passo-a-passo-observar-treinamento.md).
 - [Operacao do treinamento](horus-federated-training.md).
 - [README de governanca e SAST](../horus-governance/README.md).
-- [Template Kubernetes SAST e limites](../horus-governance/deploy/kubernetes/README.md).
+- [README do ledger (chart e setup)](../horus-governance/deploy/ledger/README.md).
 - [ExtremeXP original](../extremexp_accesscontrol/README.md).
 
 Use este guia como mapa e procedimento, e o codigo/testes vinculados como

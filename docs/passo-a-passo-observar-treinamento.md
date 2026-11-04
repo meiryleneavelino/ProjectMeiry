@@ -21,7 +21,8 @@ A [arquitetura detalhada](arquitetura-atual.md) explica cada componente.
 | Gateway, policy-enforcer, orchestrator e agentes Go | Reutilizados do Scattered Directive, com sidecars DYNAMOS. |
 | Treinamento demonstrado | Horizontal, regressao logistica e FedAvg, dados sinteticos UVA/VU/TUDELFT. |
 | VFL/TTP e notebooks FABRIC | Codigo preservado; nao sao acionados pela tela `/training`. |
-| Outras telas do Horus | Demonstrativas. Ledger, autorizacoes e dashboards dessas telas nao provam operacoes reais deste fluxo. |
+| Tela `/ledger` e validacao de algoritmos | Reais desde 03/11/2026: ledger Hyperledger Fabric nos namespaces das organizacoes, com analise SAST local. Roteiro proprio em [ledger Fabric e SAST local](ledger-fabric-e-sast-local.md), secao 8. |
+| Outras telas do Horus | Demonstrativas. Autorizacoes e graficos dessas telas nao provam operacoes reais deste fluxo. |
 | Monitoracao | Logs, estados/probes Kubernetes, metricas de ML e Hubble local. Sem Grafana/Prometheus/Loki/Jaeger/collector/Relay/UI instalados. |
 
 Nao execute todos os comandos do documento de uma vez. Comandos com `-w` ou
@@ -46,6 +47,14 @@ Aplicacao permanente: 11 Pods, sem contar infraestrutura e Jobs finalizados:
 quatro em core, quatro em training-system e um agente em cada organizacao.
 Gateway, policy-enforcer, orchestrator e cada agente tem dois containers.
 O coordenador tem um. Cada Job de treinamento tem trainer e sidecar.
+
+Nos mesmos namespaces uva, vu e tudelft tambem rodam os Pods do ledger de
+governanca (ledger-ca, orderer0, peer0, ledger-admin, horus-chaincode,
+horus-sast-agent e, em tudelft, horus-ledger-gateway), alem de Jobs
+`horus-sast-...` de poucos segundos quando ha uma analise. Eles tem labels
+`app=horus-ledger` e `app=horus-sast` e nao participam do treino. Para ver so
+o treino, filtrar por `app=federated-training`; para ignorar o ledger em
+`get pods -A -w`, acrescentar `-l 'app notin (horus-ledger,horus-sast)'`.
 
 ## 2. Preparar o ambiente
 

@@ -16,7 +16,7 @@ import {
   mockResourceUsage,
 } from "@/data/mock";
 import type { JobStatus } from "@/types";
-import type { GovernanceStatus, LedgerPage, LedgerRecord } from "@/types/governance";
+import type { GovernanceStatus, LedgerEvent, LedgerPage } from "@/types/governance";
 import { governance } from "@/data/governance";
 
 type Filter = "all" | JobStatus;
@@ -24,7 +24,7 @@ type Filter = "all" | JobStatus;
 export default function Dashboard() {
   const [filter, setFilter] = useState<Filter>("all");
   const [governanceStatus, setGovernanceStatus] = useState<GovernanceStatus | null>(null);
-  const [ledgerEvents, setLedgerEvents] = useState<LedgerRecord[]>([]);
+  const [ledgerEvents, setLedgerEvents] = useState<LedgerEvent[]>([]);
   useEffect(() => {
     let disposed = false;
     async function refresh() {
@@ -38,8 +38,8 @@ export default function Dashboard() {
     return () => { disposed = true; window.clearInterval(timer); };
   }, []);
   const statusItems = [
-    { label: "Ledger (local hash chain)", value: governanceStatus ? `${governanceStatus.ledger.valid ? "Verified" : "Integrity error"} | ${governanceStatus.ledger.sequence ?? 0} records` : "Unavailable", healthy: governanceStatus?.ledger.valid ?? false },
-    { label: "SAST worker", value: governanceStatus?.worker_ready ? "Ready" : "No recent heartbeat", healthy: governanceStatus?.worker_ready ?? false },
+    { label: "Ledger (Hyperledger Fabric)", value: governanceStatus?.ledger.valid ? `Reachable | ${governanceStatus.ledger.height ?? 0} blocks` : "Unavailable", healthy: governanceStatus?.ledger.valid ?? false },
+    { label: "SAST analysis", value: "Organization-local agents (UVA, VU, TUDELFT)", healthy: governanceStatus?.ledger_ready ?? false },
     ...mockSandboxStatus.filter(item => !item.label.startsWith("Ledger")).map(item => ({ ...item, value: `${item.value} (demo)`, healthy: false })),
   ];
 
@@ -144,8 +144,8 @@ export default function Dashboard() {
           <SandboxStatusPanel items={statusItems} />
           <AuthorizationsPanel authorizations={mockAuthorizations} />
           <Panel title="Recent ledger events" right={<Link to="/ledger" className="text-xs font-semibold text-violet-deep">View all</Link>}>
-            <ul className="space-y-3 text-xs">{ledgerEvents.map(event => <li key={event.tx_id}>
-              <Link className="font-semibold text-violet-deep" to={`/ledger?tx_id=${event.tx_id}`}>{event.event_type}</Link>
+            <ul className="space-y-3 text-xs">{ledgerEvents.map(event => <li key={`${event.tx_id}-${event.event_type}`}>
+              <Link className="font-semibold text-violet-deep" to={`/ledger?tx_id=${event.tx_id}`}>{event.event_type}{event.organization ? ` | ${event.organization}` : ""}</Link>
               <p className="break-all font-mono text-ink-muted">{event.tx_id}</p>
             </li>)}</ul>
           </Panel>

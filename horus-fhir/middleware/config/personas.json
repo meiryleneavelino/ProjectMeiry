@@ -1,0 +1,14 @@
+{
+  "notice": "Simulated identities: the as= selector picks which wallet certificate signs. It is NOT authentication (future: SMART on FHIR or Keycloak). All data is fictitious.",
+  "personas": {
+    "adm-001": {"label": "Administrador de políticas", "role": "admin", "msp": "HospitalMSP", "fhir": null},
+    "pat-001": {"label": "João (paciente)", "role": "patient", "msp": "HospitalMSP", "fhir": "Patient/patient-001"},
+    "phy-001": {"label": "Dra. Ana", "role": "physician", "msp": "HospitalMSP", "fhir": "Practitioner/practitioner-001"},
+    "phy-002": {"label": "Dr. Bruno", "role": "physician", "msp": "HospitalMSP", "fhir": "Practitioner/practitioner-002"},
+    "lab-001": {"label": "Laboratório", "role": "lab", "msp": "LabMSP", "fhir": "Organization/org-lab-001"}
+  },
+  "exams": {
+    "sr-001": {"label": "Exame A (hemograma)"},
+    "sr-002": {"label": "Exame B (sorologia)"}
+  }
+}

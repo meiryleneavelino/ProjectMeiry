@@ -1,0 +1,84 @@
+# fhir-channel: HospitalMSP (peer + the only Raft orderer) and LabMSP (peer).
+# With two organizations, MAJORITY = both: every chaincode write needs
+# endorsements from HospitalMSP AND LabMSP; channel changes need both admins.
+# Paths are inside the fhir-tools container (/local = horus-fhir/.local).
+Organizations:
+  - &Hospital
+    Name: HospitalMSP
+    ID: HospitalMSP
+    MSPDir: /local/crypto/hospital/public/msp
+    Policies:
+      Readers: {Type: Signature, Rule: "OR('HospitalMSP.member')"}
+      Writers: {Type: Signature, Rule: "OR('HospitalMSP.member')"}
+      Admins: {Type: Signature, Rule: "OR('HospitalMSP.admin')"}
+      Endorsement: {Type: Signature, Rule: "OR('HospitalMSP.peer')"}
+    OrdererEndpoints:
+      - fhir-orderer0.hospital:7050
+    AnchorPeers:
+      - Host: fhir-peer0.hospital
+        Port: 7051
+  - &Lab
+    Name: LabMSP
+    ID: LabMSP
+    MSPDir: /local/crypto/lab/public/msp
+    Policies:
+      Readers: {Type: Signature, Rule: "OR('LabMSP.member')"}
+      Writers: {Type: Signature, Rule: "OR('LabMSP.member')"}
+      Admins: {Type: Signature, Rule: "OR('LabMSP.admin')"}
+      Endorsement: {Type: Signature, Rule: "OR('LabMSP.peer')"}
+    AnchorPeers:
+      - Host: fhir-peer0.lab
+        Port: 7051
+
+Capabilities:
+  Channel: &ChannelCapabilities {V2_0: true}
+  Orderer: &OrdererCapabilities {V2_0: true}
+  Application: &ApplicationCapabilities {V2_5: true}
+
+Application: &ApplicationDefaults
+  Organizations:
+  Policies:
+    Readers: {Type: ImplicitMeta, Rule: "ANY Readers"}
+    Writers: {Type: ImplicitMeta, Rule: "ANY Writers"}
+    Admins: {Type: ImplicitMeta, Rule: "MAJORITY Admins"}
+    LifecycleEndorsement: {Type: ImplicitMeta, Rule: "MAJORITY Endorsement"}
+    Endorsement: {Type: ImplicitMeta, Rule: "MAJORITY Endorsement"}
+  Capabilities: *ApplicationCapabilities
+
+Orderer: &OrdererDefaults
+  OrdererType: etcdraft
+  EtcdRaft:
+    Consenters:
+      - Host: fhir-orderer0.hospital
+        Port: 7050
+        ClientTLSCert: /local/crypto/hospital/public/orderer-tls.crt
+        ServerTLSCert: /local/crypto/hospital/public/orderer-tls.crt
+  BatchTimeout: 1s
+  BatchSize:
+    MaxMessageCount: 10
+    AbsoluteMaxBytes: 10 MB
+    PreferredMaxBytes: 2 MB
+  Organizations:
+  Policies:
+    Readers: {Type: ImplicitMeta, Rule: "ANY Readers"}
+    Writers: {Type: ImplicitMeta, Rule: "ANY Writers"}
+    Admins: {Type: ImplicitMeta, Rule: "MAJORITY Admins"}
+    BlockValidation: {Type: ImplicitMeta, Rule: "ANY Writers"}
+  Capabilities: *OrdererCapabilities
+
+Channel: &ChannelDefaults
+  Policies:
+    Readers: {Type: ImplicitMeta, Rule: "ANY Readers"}
+    Writers: {Type: ImplicitMeta, Rule: "ANY Writers"}
+    Admins: {Type: ImplicitMeta, Rule: "MAJORITY Admins"}
+  Capabilities: *ChannelCapabilities
+
+Profiles:
+  FhirChannel:
+    <<: *ChannelDefaults
+    Orderer:
+      <<: *OrdererDefaults
+      Organizations: [*Hospital]
+    Application:
+      <<: *ApplicationDefaults
+      Organizations: [*Hospital, *Lab]

@@ -1,10 +1,24 @@
 # Horus: estrutura, testes de uso e monitoracao
 
 Para a visao consolidada de todo o projeto, consultar o
-[guia completo do codigo, testes e observacao](HORUS_GUIA_COMPLETO.md).
+[guia completo do codigo, testes e observacao](HORUS_GUIA_COMPLETO.md). Para
+entender com calma cada etapa do ledger e da analise local, consultar
+[ledger Fabric e SAST local](ledger-fabric-e-sast-local.md).
 
-Integracao validada em 02/11/2026, sem alterar go/, python/, charts/,
-configuration/ ou fabric/. A API de treinamento continua na porta 8096.
+Atualizado em 03/11/2026, sem alterar go/, python/, charts/, configuration/
+ou fabric/. A API de treinamento continua na porta 8096.
+
+## O que mudou nesta versao
+
+| Antes (02/11/2026) | Agora (03/11/2026) |
+| --- | --- |
+| API + worker com `docker.sock` no Mac | So a API no Mac; nenhum componente da governanca monta o Docker socket. |
+| Servidor sorteava a revisora | As organizacoes elegiveis sorteiam por commit-reveal, no chaincode. |
+| Analise em container Docker no Mac | Analise em Job Kubernetes efemero no namespace da organizacao sorteada. |
+| Ninguem assinava o resultado | A revisora assina a transacao com a identidade Fabric dela. |
+| Ledger SQLite com ancora local | Canal Hyperledger Fabric replicado em 3 peers, ordenado por 3 orderers Raft. |
+| Sem conferencia independente | A outra organizacao elegivel refaz a analise; divergencia marca disputa. |
+| Limite de 1 MiB | Limite de 900 KiB (cabe num ConfigMap). |
 
 ## Arquitetura
 
@@ -12,62 +26,68 @@ Desenho renderizado: [diagrams/governanca-1.svg](diagrams/governanca-1.svg).
 
 ```mermaid
 flowchart TB
-    Pessoa[Pesquisadora - identidade definida no servidor] --> UI[Horus React e Vite - 5175]
-    UI -->|governance-api| API[Governance API - 8097 - sem Docker socket]
+    Pessoa[Pesquisadora] --> UI[Horus React e Vite - 5175]
+    UI -->|governance-api| API[Governance API - 8097 - nao confiavel - sem Docker socket]
     UI -->|training-api: historico, cancelar e download| Gateway[Gateway DYNAMOS - 8096]
     API -->|iniciar somente built-in| Gateway
-    API --> Store[(SQLite: catalogo, fila, codigo e relatorios)]
-    API --> Ledger[(LedgerBackend - eventos encadeados)]
-    Ledger --> Ancora[Arquivo separado: ancora da cabeca]
-    Store --> Worker[Worker confiavel - uma analise por vez]
-    Worker -->|UMA organizacao elegivel| SAST[Container horus-sast-uva ou vu ou tudelft]
-    SAST -->|relatorio deterministico - codigo nao executado| Worker
-    Worker --> Store
-    Worker --> Ledger
+    API -->|8098 port-forward| LGW[horus-ledger-gateway - researcher TUDELFT]
+    API --> Store[(SQLite: idempotencia de pedidos de treino)]
+    LGW --> PT[peer0 TUDELFT]
+    subgraph Canal[Canal Fabric horus-governance - MAJORITY de 3 organizacoes]
+        PT
+        PU[peer0 UVA]
+        PV[peer0 VU]
+        Ord[orderer0 UVA, VU e TUDELFT - Raft]
+    end
+    AU[horus-sast-agent UVA] --> PU
+    AV[horus-sast-agent VU] --> PV
+    AT[horus-sast-agent TUDELFT] --> PT
+    AU -->|se sorteada ou auditora| JU[Job SAST no namespace uva - sem rede]
+    AV -->|se sorteada ou auditora| JV[Job SAST no namespace vu - sem rede]
+    JU -->|relatorio deterministico - codigo nao executado| AU
+    JV -->|relatorio deterministico - codigo nao executado| AV
     Gateway --> Controle[Policy-enforcer, orchestrator, RabbitMQ e etcd]
     Gateway --> Coord[Coordenador FedAvg]
-    Coord --> Agentes[Agentes UVA, VU e TUDELFT]
+    Coord --> Agentes[Agentes de treino UVA, VU e TUDELFT]
     Agentes --> Jobs[Jobs trainer e sidecar]
     Dados[(Datasets locais readOnly)] --> Jobs
-    Jobs -->|atualizacoes pelo RabbitMQ| Agentes
-    Agentes --> Coord
     Coord --> Modelo[(Historico e modelo global)]
-    Ledger -.->|adaptador futuro| Besu[Besu / ExtremeXP - nao ativo]
 ```
 
-SAST roda no Docker fora do cluster; trainers rodam no Kubernetes. Sao
-containers e finalidades diferentes. O template de Job SAST ainda nao foi
-instalado. Nenhum algoritmo submetido e executado.
+O agente da TUDELFT participa do canal e audita submissoes de outras
+organizacoes, mas nunca revisa nem audita submissoes da propria TUDELFT.
+Treino e analise usam Jobs diferentes, com finalidades e politicas de rede
+diferentes. Nenhum algoritmo submetido e executado.
 
 ## Mapa do projeto
 
 | Local | Responsabilidade |
 | --- | --- |
-| horus-sandbox-frontend/src/pages/FederatedTraining.tsx | Treino real, identidade do servidor e catalogo com notas. |
-| horus-sandbox-frontend/src/components/AlgorithmSubmission.tsx | Upload/texto, progresso, sorteio, relatorio, hashes e links. |
-| horus-sandbox-frontend/src/pages/Ledger.tsx | Filtros, historico por hash, detalhe e verificadores. |
+| horus-sandbox-frontend/src/pages/FederatedTraining.tsx | Treino real, identidade e catalogo com notas. |
+| horus-sandbox-frontend/src/components/AlgorithmSubmission.tsx | Upload/texto, as cinco etapas, relatorio, assinatura, auditorias, disputa e links. |
+| horus-sandbox-frontend/src/pages/Ledger.tsx | Eventos Fabric, filtros, bloco/validacao da transacao e verificadores. |
 | horus-sandbox-frontend/src/data/governance.ts | Cliente HTTP; nao armazena bearer token no navegador. |
-| horus-sandbox-frontend/src/types/governance.ts | Contratos separados dos mocks antigos. |
-| horus-governance/app/main.py | Endpoints, autenticacao local, limites e uploads. |
-| horus-governance/app/settings.py | Identidade do servidor, caminhos, credenciais e URL de treino. |
-| horus-governance/app/reviewer.py | Sorteio reproduzivel sem a organizacao autora. |
-| horus-governance/app/service.py | Deduplicacao, fila, validacao, catalogo e eventos. |
-| horus-governance/app/worker.py | Worker separado, heartbeat e tratamento de interrupcao. |
-| horus-governance/app/storage.py | SQLite parametrizado, lock de escrita e ancora. |
-| horus-governance/app/ledger.py | Interface LedgerBackend e SQLiteLedger. |
-| horus-governance/app/training_bridge.py | Inicio idempotente do built-in e reconciliacao. |
-| horus-governance/sast/ | Regras locais, wrapper Semgrep e runner isolado. |
-| horus-governance/config/ | Politica comum, imagens/namespaces e identidade local. |
+| horus-sandbox-frontend/src/types/governance.ts | Contratos de submissao, auditoria, evento, transacao e status. |
+| horus-governance/app/main.py | Endpoints, autenticacao local, limites, uploads e rotas do ledger. |
+| horus-governance/app/settings.py | Identidade exibida, URL de treino, URL e token do gateway do ledger. |
+| horus-governance/app/reviewer.py | Validacao de elegiveis (o sorteio saiu do servidor). |
+| horus-governance/app/service.py | Normalizacao, limite, deduplicacao pelo ledger, apresentacao e verificacao. |
+| horus-governance/app/ledger.py | FabricLedger: cliente do gateway e mapeamento de erros. |
+| horus-governance/app/storage.py | SQLite so para pedidos de treino idempotentes. |
+| horus-governance/app/training_bridge.py | Inicio idempotente do built-in, reconciliacao e TrainingStarted no ledger. |
+| horus-governance/ledger/ | Go: chaincode, sast-agent e gateway, com testes. |
+| horus-governance/deploy/ledger/ | Chart Helm e setup.py do ledger. |
+| horus-governance/sast/ | Regras locais, wrapper Semgrep (roda no Job) e runner Docker de operador. |
+| horus-governance/config/ | Politica comum, imagens/namespaces/MSPs e identidade local. |
 | horus-governance/examples/ | Scripts para enviar como texto. Nunca executar unsafe.py. |
-| horus-governance/tests/ | Contratos, API, sorteio, concorrencia, integridade e testes ao vivo. |
-| horus-governance/.local/ | Banco, ancora, locks, heartbeat e token. Ignorada pelo Git; sensivel. |
-| go/, python/, charts/, configuration/ | DYNAMOS e treinamento horizontal existente; nao alterados nesta integracao. |
-| extremexp_accesscontrol/ | Flask/Web3 e ABAC existentes; auditoria Besu futura. |
-| fabric/, VFL_*.py, house_energy_consumption/ | VFL/TTP/FABRIC original, ainda nao ligado ao catalogo. |
+| horus-governance/tests/ | Contratos, API, ledger falso, ponte de treino e testes ao vivo. |
+| horus-governance/.local/ | Token da API, SQLite de treino e .local/ledger/ (token do gateway, configuracao, material publico). Ignorada pelo Git. |
+| go/, python/, charts/, configuration/ | DYNAMOS e treinamento horizontal existente; nao alterados. |
+| extremexp_accesscontrol/ | Flask/Web3 e ABAC Besu existentes; contratos nao usados (ver documento do ledger, secao 12). |
+| fabric/, VFL_*.py, house_energy_consumption/ | VFL/TTP do testbed FABRIC original, sem relacao com Hyperledger Fabric. |
 
-O Dashboard mostra ledger e worker reais. Os demais graficos, numeros e
-autorizacoes demonstrativos nao viraram monitoracao real. Entradas de status
-remanescentes sao marcadas demo.
+O Dashboard mostra o status real do ledger e os eventos recentes. Os demais
+graficos, numeros e autorizacoes continuam demonstrativos e marcados demo.
 
 ## Executar
 
@@ -76,47 +96,50 @@ ativos. Na raiz de Scattered-Directive:
 
 ```bash
 cd horus-governance
-python3 tools.py build
+python3 tools.py ledger setup        # so na primeira vez (idempotente)
+python3 tools.py ledger forward --background
 python3 tools.py start
 python3 tools.py status
+python3 tools.py ledger verify
 ```
 
-Em outro terminal, se o frontend nao estiver rodando, partir da pasta
-Scattered-Directive e executar:
+Em outro terminal, se o frontend nao estiver rodando:
 
 ```bash
 npm --prefix horus-sandbox-frontend run dev -- --strictPort
 ```
 
 Abrir <http://127.0.0.1:5175/training> e <http://127.0.0.1:5175/ledger>.
-/governance-api aponta para 8097; /training-api continua em 8096.
-Para parar apenas os novos servicos, executar `python3 tools.py stop` na
-pasta horus-governance. Os arquivos .local/ permanecem.
+/governance-api aponta para 8097; /training-api continua em 8096; a API fala
+com o gateway em 8098. `python3 tools.py stop` para so a API; o ledger continua.
 
 ## Roteiro de teste de uso manual
 
-1. Conferir Researcher e Organization. A identidade vem de /me, nao do pedido.
+1. Conferir Researcher e Organization (TUDELFT).
 2. Selecionar UVA/VU/TUDelft. Logistic regression deve ter 100/100 e origem
-   Trusted built-in baseline: confianca inicial configurada, nao uma nova
-   varredura Semgrep de todo o runtime de aprendizado.
-3. Enviar examples/clean.py ou colar seu conteudo. Esperar queued, running e
-   approved com 100. TUDelft deve ser excluida, com UVA ou VU como revisora.
-4. Conferir hashes, tx_id e proveniencia. No evento ReviewerSelected estao
-   elegiveis, excluida, semente e selection_version do sorteio.
-5. Reenviar o mesmo texto: reutiliza resultado, hash e revisora, sem outro
-   container ou CodeAnalyzed. Alterar um caractere real gera nova analise;
-   mudar apenas CRLF para LF nao muda o hash.
-6. Enviar examples/unsafe.py: rejected, nota 0, quatro altos e um medio. O
+   Trusted built-in baseline.
+3. Em outro terminal, observar as analises:
+   `kc get jobs -A -l app=horus-sast -w`.
+4. Enviar examples/clean.py. A tela mostra drawing (commits e reveals de UVA
+   e VU), depois assigned (revisora sorteada), depois approved com 100. Um Job
+   `horus-sast-...` aparece e some no namespace da revisora; logo depois outro
+   no namespace da auditora.
+5. Conferir a etapa 4 (assinatura pelo MSP da revisora) e a etapa 5 (auditoria
+   "matches"). Abrir a transacao: bloco e VALID.
+6. Reenviar o mesmo texto: reused, mesmo hash e resultado, nenhuma transacao
+   nova. Alterar um caractere real gera novo fluxo; mudar so CRLF/LF nao.
+7. Enviar examples/unsafe.py: rejected, nota 0, quatro altos e um medio. O
    token falso nao aparece nas mensagens nem nos eventos.
-7. Selecionar algoritmo novo aprovado: Start training deve ficar desabilitado.
-   O servidor tambem bloqueia essa execucao sem depender da interface.
-8. Voltar ao built-in, iniciar tres rodadas, acompanhar os Jobs e baixar o
-   modelo. Ledger deve conter um TrainingStarted com o UUID real do treino.
-9. Abrir Analysis transaction; conferir dados, hash e hash anterior. Usar
-   Verify chain e Verify report. Testar filtro por tipo, code_hash e paginacao.
+8. Selecionar algoritmo novo aprovado: Start training desabilitado; o servidor
+   tambem bloqueia.
+9. Voltar ao built-in, iniciar tres rodadas, acompanhar os Jobs e baixar o
+   modelo. O ledger deve ter um TrainingStarted com o UUID real.
+10. Na tela Ledger: filtrar por code_hash e por tipo, usar Chain head e Verify
+    report. No terminal: `python3 tools.py ledger verify`.
 
-O historico de codigo contem submissao, sorteio, analise, decisao e registro
-no catalogo se aprovado. Nomes pessoais, fonte e achados nao vao ao ledger.
+Os eventos contem hashes, organizacoes, segredos revelados do sorteio,
+relatorio resumido e decisoes. Nomes pessoais, codigo fonte e achados
+detalhados nao vao aos eventos.
 
 ## Testes automatizados e como criar novos
 
@@ -126,16 +149,17 @@ Na pasta horus-governance:
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.lock
 .venv/bin/python -m unittest discover -s tests -v
+(cd ledger && go test ./...)
 ```
 
-Sem flags, testes Docker/live sao pulados explicitamente. Para SAST real nas
-tres organizacoes, apos construir as imagens:
+Sem flags, testes Docker/live sao pulados explicitamente. Para SAST real em
+Docker local nas tres organizacoes, apos construir as imagens:
 
 ```bash
 HORUS_SAST_DOCKER_TESTS=1 .venv/bin/python -m unittest discover -s tests -v
 ```
 
-Para exercitar API/proxy/worker/ledger reais, sem treino:
+Para exercitar ledger, agentes, Jobs SAST, API e proxy reais, sem treino:
 
 ```bash
 HORUS_GOV_LIVE_TESTS=1 .venv/bin/python -m unittest discover -s tests -p test_live.py -v
@@ -148,90 +172,80 @@ HORUS_GOV_LIVE_TESTS=1 HORUS_GOV_LIVE_TRAINING=1 \
   .venv/bin/python -m unittest discover -s tests -p test_live.py -v
 ```
 
-O teste de treinamento pula quando encontra outra execucao ativa. Testes de
-adulteracao usam bancos temporarios: nao editar o banco real para demonstra-los.
-O teste integrado antigo altera acordo sintetico e requer ausencia de outros
-treinos; os testes de governanca nao revogam os acordos de treinamento.
-
 | Quero testar | Onde acrescentar um caso |
 | --- | --- |
-| Entradas, identidade, uploads e HTTP | tests/test_api.py: TestClient com estado temporario e upstream simulado. |
-| Sorteio, catalogo e duplicatas | tests/test_governance.py: Settings com TemporaryDirectory. |
-| Regras e isolamento SAST | tests/test_sast.py: enviar bytes, nunca importar/executar o exemplo; habilitar gate Docker. |
-| Adulteracao do ledger | tests/test_ledger.py: modificar apenas banco/ancora temporarios. |
-| Relatorio alterado | Teste de governanca: modificar JSON temporario e verificar recusa. |
-| Timeout/idempotencia | tests/test_training_bridge.py: MockTransport com timeout, resposta e reconciliacao. |
-| Uso ponta a ponta | tests/test_live.py: polling limitado, timeouts e servicos reais locais. |
-| Interface | Playwright com roles/labels Python code, Script file, Submit for validation, Verify chain e Verify report. |
+| Regra do chaincode (quem pode o que) | ledger/governance/contract_test.go: identidades simuladas em memoria. |
+| Comportamento dos agentes | ledger/internal/agent/agent_test.go: tres agentes contra o chaincode em memoria. |
+| Gateway HTTP | ledger/internal/httpgw/httpgw_test.go. |
+| Entradas, identidade, uploads e HTTP da API | tests/test_api.py: TestClient com FakeLedger. |
+| Elegiveis, catalogo e reuso | tests/test_governance.py: FakeLedger e TemporaryDirectory. |
+| Regras e isolamento SAST | tests/test_sast.py: enviar bytes, nunca importar/executar o exemplo. |
+| Timeout/idempotencia/queda do ledger | tests/test_training_bridge.py. |
+| Uso ponta a ponta | tests/test_live.py: polling limitado, servicos reais locais. |
+| Interface | Playwright com labels Python code, Script file, Submit for validation, Chain head e Verify report. |
 
-Variantes uteis: .exe renomeado, UTF-8 invalido, 1 MB + 1 byte, somente TUDelft,
-tentativa de enviar researcher_org, dois envios concorrentes, nosemgrep,
-alteracao do relatorio e timeout ao iniciar treino. Nao copiar o token real
-para testes, prints ou arquivos versionados.
+Variantes uteis: .exe renomeado, UTF-8 invalido, 900 KiB + 1 byte, somente
+TUDelft, tentativa de enviar researcher_org, revisora desonesta (ja coberta em
+Go), configuracao divergente e timeout ao iniciar treino. Nao usar o canal
+real para testes de adulteracao. Nao copiar tokens para testes ou prints.
 
 ## Monitoracao disponivel agora
 
-No Mac, com Vite ativo, sem precisar expor o bearer token:
+No Mac, com Vite ativo:
 
 ```bash
 curl -fsS http://127.0.0.1:5175/governance-api/status | python3 -m json.tool
 curl -fsS -X POST http://127.0.0.1:5175/governance-api/ledger/verify | python3 -m json.tool
+cd horus-governance && python3 tools.py ledger verify && python3 tools.py ledger status
 ```
-
-O status informa backend, integridade e heartbeat do worker. O heartbeat pode
-ter ate 180 segundos: e liveness aproximada, nao garantia de saude de todos
-os recursos externos.
 
 ```bash
+kc() { /Applications/Docker.app/Contents/Resources/bin/docker exec dynamos-dev kubectl --context kind-scattered-training "$@"; }
+kc get pods -A -l app=horus-ledger
+kc get jobs -A -l app=horus-sast -w
+kc logs -n uva deploy/horus-sast-agent -f
+kc logs -n tudelft deploy/horus-ledger-gateway --tail=50
 /Applications/Docker.app/Contents/Resources/bin/docker logs --tail=100 horus-governance-api
-/Applications/Docker.app/Contents/Resources/bin/docker logs --tail=100 horus-governance-worker
-/Applications/Docker.app/Contents/Resources/bin/docker ps --filter name=horus-sast
-/Applications/Docker.app/Contents/Resources/bin/docker stats --no-stream
-/Applications/Docker.app/Contents/Resources/bin/docker exec dynamos-dev \
-  kubectl --context kind-scattered-training get pods,jobs -A
 ```
 
-Containers SAST sao temporarios; podem sumir antes do comando manual. Uma
-lista vazia depois do relatorio pronto nao e falha. As imagens permanecem.
-Para treino, usar tambem o roteiro de observacao de Pods ja existente.
+Jobs SAST sao temporarios; uma lista vazia depois do relatorio pronto nao e
+falha. Para treino, usar tambem o roteiro de observacao de Pods.
 
-Registrar como evidencias: code_hash, report_hash, tx_id, revisora, UUID do
-treino, estado e quantidade de Jobs. Nao registrar codigo fonte, nomes,
-credenciais, Secrets ou dados dos datasets em logs publicos.
-Prometheus, Grafana, Loki, collector/Jaeger e Hubble Relay/UI continuam ausentes;
-nenhum grafico mock representa esses servicos em execucao.
+Registrar como evidencias: code_hash, report_hash, tx_id, bloco, revisora,
+auditorias, seed, cabecas dos tres peers, UUID do treino e Jobs. Nao registrar
+codigo fonte, nomes, credenciais, Secrets ou chaves dos volumes do ledger.
+Prometheus, Grafana, Loki, collector/Jaeger e Hubble Relay/UI continuam
+ausentes; peers e orderers expoem metricas na porta 9443, ainda sem coletor.
 
 ## Limites e recuperacao
 
-- SQLiteLedger e local, nao blockchain. IDs local-* nao sao hashes de transacao
-  Besu. O adaptador futuro tem interface definida, mas nao esta instalado.
-- A ancora fica fora do banco, mas no mesmo host. Um administrador que
-  reescreva banco e ancora nao e impedido. E necessario ancoramento externo
-  para proteger contra esse adversario.
-- Uma queda entre commit e atualizacao da ancora causa recusa fail-closed.
-  Nao ha reparo automatico que aceite silenciosamente outra cadeia. Para
-  backup consistente, parar API/worker e copiar .local/ para local protegido.
-- Worker interrompido marca a analise como error na proxima inicializacao;
-  nao aprova nem reanalisa automaticamente.
-- Mudancas de regras/politica exigem estrategia explicita de revalidacao do
-  catalogo antes de usar aprovacoes antigas. Nao atualizar as imagens
-  supondo que o catalogo foi automaticamente renovado.
-- O wrapper persiste Idempotency-Key antes da chamada de treino. Resultado
-  incerto nao e reenviado automaticamente. Consultar GET /training/requests/{id}.
-  Se o UUID real for conhecido, o operador pode usar
-  POST /training/requests/{id}/reconcile?run_id={uuid}. Parametros e horario sao
-  conferidos. Nao ha promessa de atomicidade distribuida ou exactly-once.
-- Clientes diretos de 8096 ficam fora do novo ledger. Sem alterar o gateway
-  existente, nao se pode alegar auditoria obrigatoria para todos os clientes.
+- As tres organizacoes estao num mesmo kind administrado por uma pessoa. O
+  desenho e o de producao; o isolamento real exige um cluster por organizacao.
+- Raft tolera queda, nao malicia; MAJORITY com tres organizacoes nao protege
+  contra conluio de duas.
+- Assinatura prova quem gravou; a auditoria prova a analise quando ha outra
+  organizacao elegivel honesta.
+- Mudar regras, politica ou imagens SAST muda a configuracao acordada; o
+  ledger recusa outra configuracao. No sandbox: `ledger down --purge` e
+  `ledger setup` (apaga o historico).
+- Eventos do SQLite anterior nao foram migrados; o arquivo continua intacto.
+- O wrapper persiste Idempotency-Key antes da chamada de treino. Se o ledger
+  falhar depois do inicio, repetir o mesmo pedido grava TrainingStarted sem
+  novo treino. Nao ha atomicidade distribuida nem exactly-once.
+- Clientes diretos de 8096 ficam fora do ledger.
 - O ambiente nao tem OIDC, secure aggregation, differential privacy ou execucao
   de algoritmos submetidos. Uma nota alta de SAST nao prova seguranca.
 
 ## Resultado desta entrega
 
-API/worker reais aprovaram o limpo com 100, reprovaram o problematico com 0,
-reutilizaram duplicatas e verificaram relatorio/cadeia. O treino governado
+Execucao real de 03/11/2026: clean.py sorteado para VU, analisado no
+namespace vu, assinado por VuMSP, aprovado com 100 e auditado pela UVA com o
+mesmo hash; unsafe.py sorteado para UVA, rejeitado com 0 e auditado pela VU
+com o mesmo hash. Os tres peers ficaram com a mesma altura e o mesmo hash, o
+sorteio foi recalculado a partir dos eventos publicos, e RBAC/rede do agente e
+do Job SAST foram conferidos. Testes Go e 37 testes Python passaram; o teste
+ao vivo completou duas submissoes em 61 s.
+
+Entrega anterior (02/11/2026): treino governado
 03702e1f-181b-4116-b513-b01a54338ce5 concluiu tres rodadas, exportou o modelo
-global e gerou exatamente um TrainingStarted.
-No navegador foram conferidos envio por texto/arquivo, exclusao de TUDelft,
-notas/achados, bloqueio do algoritmo novo, links e verificadores. Treinamento,
-Ledger e Dashboard foram conferidos em desktop e celular.
+global e gerou um TrainingStarted (no SQLite daquela versao).

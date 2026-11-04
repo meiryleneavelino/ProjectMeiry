@@ -12,6 +12,12 @@ import Security from "@/pages/Security";
 import Reports from "@/pages/Reports";
 import Settings from "@/pages/Settings";
 import FederatedTraining from "@/pages/FederatedTraining";
+import FhirLayout from "@/components/fhir/FhirLayout";
+import FhirConsent from "@/pages/fhir/Consent";
+import FhirLab from "@/pages/fhir/Lab";
+import FhirAccess from "@/pages/fhir/Access";
+import FhirPolicies from "@/pages/fhir/Policies";
+import FhirAudit from "@/pages/fhir/Audit";
 
 export default function App() {
   return (
@@ -27,6 +33,15 @@ export default function App() {
             <Route path="/" element={<Dashboard />} />
             <Route path="/new-job" element={<NewJob />} />
             <Route path="/training" element={<FederatedTraining />} />
+            {/* Prontuário (FHIR): separate module and ledger (Fabric fhir-channel) */}
+            <Route path="/fhir" element={<FhirLayout />}>
+              <Route index element={<FhirAccess />} />
+              <Route path="consent" element={<FhirConsent />} />
+              <Route path="lab" element={<FhirLab />} />
+              <Route path="access" element={<FhirAccess />} />
+              <Route path="policies" element={<FhirPolicies />} />
+              <Route path="audit" element={<FhirAudit />} />
+            </Route>
             <Route path="/jobs" element={<Jobs />} />
             <Route path="/authorizations" element={<Authorizations />} />
             <Route path="/ledger" element={<Ledger />} />

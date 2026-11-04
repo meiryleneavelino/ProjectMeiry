@@ -1,0 +1,48 @@
+# Images are loaded into kind by `python3 tools.py ledger setup`; nothing is
+# pulled inside the cluster.
+images:
+  ca: hyperledger/fabric-ca:1.5.22
+  peer: hyperledger/fabric-peer:2.5.16
+  orderer: hyperledger/fabric-orderer:2.5.16
+  tools: hyperledger/fabric-tools:2.5.16
+  ledger: horus-ledger:local
+
+# Docker image ID of horus-ledger:local; a new build rolls the pods that use it.
+ledgerImageId: ""
+
+channel: horus-governance
+chaincode: horus-governance
+
+# One entry per organization. Each organization's components live only in its
+# own namespace (the namespaces already exist from the training chart).
+organizations:
+  - name: UVA
+    namespace: uva
+    msp: UvaMSP
+    analyzerImage: horus-sast-uva:local
+    researcher: false
+  - name: VU
+    namespace: vu
+    msp: VuMSP
+    analyzerImage: horus-sast-vu:local
+    researcher: false
+  - name: TUDELFT
+    namespace: tudelft
+    msp: TudelftMSP
+    analyzerImage: horus-sast-tudelft:local
+    researcher: true
+
+# Agreed governance configuration (JSON). Filled by the setup script from the
+# built analyzer images, rules.yaml and policy.json.
+governanceConfig: ""
+
+# Per-organization chaincode package IDs, known only after `peer lifecycle
+# chaincode install` in each organization. Empty means "not deployed yet".
+chaincodeIds: {}
+
+agents:
+  enabled: false
+  audit: true
+
+gateway:
+  enabled: false

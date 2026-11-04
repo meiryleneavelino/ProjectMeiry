@@ -10,6 +10,11 @@ import {
   Lock,
   FileText,
   Settings as SettingsIcon,
+  HeartHandshake,
+  FlaskConical,
+  Eye,
+  ScrollText,
+  History,
 } from "lucide-react";
 
 const navItems = [
@@ -25,6 +30,21 @@ const navItems = [
   { to: "/reports", label: "Reports", icon: FileText },
   { to: "/settings", label: "Settings", icon: SettingsIcon },
 ];
+
+// Prontuário (FHIR): a separate module with its own ledger (Fabric fhir-channel).
+const fhirItems = [
+  { to: "/fhir/consent", label: "Consentimento", icon: HeartHandshake },
+  { to: "/fhir/lab", label: "Laboratório", icon: FlaskConical },
+  { to: "/fhir/access", label: "Acesso ao exame", icon: Eye },
+  { to: "/fhir/policies", label: "Políticas (PAP)", icon: ScrollText },
+  { to: "/fhir/audit", label: "Auditoria", icon: History },
+];
+
+const linkClass = ({ isActive }: { isActive: boolean }) =>
+  [
+    "flex items-center gap-2.5 rounded-[9px] px-3 py-2 text-[13.5px] font-medium transition-colors",
+    isActive ? "bg-gold/[0.14] text-[#f3e3bd]" : "text-[#b7b7d4] hover:bg-white/5 hover:text-[#f1f1fa]",
+  ].join(" ");
 
 export default function Sidebar() {
   return (
@@ -58,6 +78,16 @@ export default function Sidebar() {
               ].join(" ")
             }
           >
+            <Icon size={17} strokeWidth={1.8} />
+            {label}
+          </NavLink>
+        ))}
+        <div className="col-span-2 mt-3 border-t border-white/10 px-3 pb-1 pt-3 text-[10.5px] font-semibold uppercase tracking-wider text-[#9b9bc0]">
+          Prontuário (FHIR)
+          <div className="font-normal normal-case tracking-normal text-[#8f8fb3]">outra ledger: Fabric fhir-channel</div>
+        </div>
+        {fhirItems.map(({ to, label, icon: Icon }) => (
+          <NavLink key={to} to={to} className={linkClass}>
             <Icon size={17} strokeWidth={1.8} />
             {label}
           </NavLink>

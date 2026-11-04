@@ -1,6 +1,8 @@
 # Arquitetura atual do Scattered Directive
 
-Estado conferido em 29/10/2026 no cluster `kind-scattered-training`.
+Estado conferido em 29/10/2026 no cluster `kind-scattered-training`; ledger de
+governanca Hyperledger Fabric e agentes SAST acrescentados e conferidos em
+03/11/2026 (ver [ledger Fabric e SAST local](ledger-fabric-e-sast-local.md)).
 Este documento descreve o sandbox horizontal em execucao, nao um deployment
 FABRIC de producao. O VFL/TTP original continua no repositorio, mas nao e
 acionado pela tela de treinamento do Horus.
@@ -36,18 +38,25 @@ flowchart TB
           JobU[Job UVA: trainer + sidecar DYNAMOS]
           DatasetU[(PVC training-data UVA)]
           LocalU[(PVC training-state UVA)]
+          LedgerU[Ledger UVA: CA, peer0, orderer0, chaincode]
+          SastU[horus-sast-agent UVA + Jobs SAST efemeros sem rede]
         end
         subgraph OrgV[Namespace vu]
           AgenteV[Agente VU + sidecar DYNAMOS]
           JobV[Job VU: trainer + sidecar DYNAMOS]
           DatasetV[(PVC training-data VU)]
           LocalV[(PVC training-state VU)]
+          LedgerV[Ledger VU: CA, peer0, orderer0, chaincode]
+          SastV[horus-sast-agent VU + Jobs SAST efemeros sem rede]
         end
         subgraph OrgT[Namespace tudelft]
           AgenteT[Agente TUDELFT + sidecar DYNAMOS]
           JobT[Job TUDELFT: trainer + sidecar DYNAMOS]
           DatasetT[(PVC training-data TUDELFT)]
           LocalT[(PVC training-state TUDELFT)]
+          LedgerT[Ledger TUDELFT: CA, peer0, orderer0, chaincode]
+          SastT[horus-sast-agent TUDELFT]
+          LedgerGW[horus-ledger-gateway - identidade researcher]
         end
         subgraph Infra[Namespace kube-system]
           K8s[kube-apiserver - API Kubernetes]
@@ -72,6 +81,14 @@ flowchart TB
     end
 
     PF --> Gateway
+    LedgerU <-->|canal horus-governance: gossip, endosso, Raft| LedgerV
+    LedgerV <-->|canal horus-governance| LedgerT
+    LedgerU <-->|canal horus-governance| LedgerT
+    SastU --> LedgerU
+    SastV --> LedgerV
+    SastT --> LedgerT
+    LedgerGW --> LedgerT
+    Governanca[API Horus de governanca - Mac 8097] -->|port-forward 8098| LedgerGW
     Tools -->|kubectl e Helm| K8s
     Gateway <-->|aprovacao e composicao pelos sidecars| MQ
     MQ <--> Policy
@@ -170,6 +187,13 @@ Linkerd nem um coletor de monitoracao. O coordenador e um Pod separado.
 | local-path-provisioner | Cria os volumes locais solicitados pelos PVCs. Nao replica datasets para outros nos. |
 | ServiceAccounts e RBAC | Definem permissoes Kubernetes dos agentes; trainers nao montam credencial da API Kubernetes. Nao substituem acordos de negocio no etcd. |
 | Secrets e ConfigMaps | Secrets guardam credenciais/capacidades do sandbox; ConfigMaps fornecem configuracao e entrada das rodadas. Evitar imprimir seus valores ao demonstrar o sistema. |
+| ledger-ca e ledger-enroll | CA e Job de matricula de cada organizacao. Geram as identidades Fabric (peer, orderer, admin, agente e, na TUDELFT, pesquisadora) dentro do namespace. |
+| peer0 e orderer0 | Copia do ledger e membro Raft de cada organizacao no canal horus-governance. Falam so com os nos e clientes do ledger das tres organizacoes. |
+| horus-chaincode | Regras de governanca (Go). Cada organizacao roda a sua; endosso exige a maioria. |
+| horus-sast-agent | Sorteio por commit-reveal, analise SAST quando sorteado e auditoria por re-execucao, em nome de uma organizacao. RBAC so no proprio namespace. |
+| Jobs horus-sast | Analise efemera sem rede, sem token, root readOnly, UID 20001. Criados e apagados pelo agente. |
+| horus-ledger-gateway | Somente em tudelft. Ponte HTTP da API Horus para o peer da TUDELFT com a identidade researcher. |
+| ledger-admin | Console do administrador da organizacao, usado pelo setup do ledger. |
 
 Para acompanhar cada etapa com comandos, resultados esperados e diagnostico,
 seguir o [roteiro completo de observacao](passo-a-passo-observar-treinamento.md).
@@ -234,6 +258,8 @@ flowchart LR
         Historico --> Horus[Horus: progresso e metricas do treinamento]
         Rede[Cilium] --> Hubble[Agente Hubble habilitado localmente]
         Verificador[verify.py: testes de rede, mounts e RBAC] --> Relatorios[Relatorios JSON locais]
+        Ledger[Peers do ledger Fabric] --> Cabecas[ledger verify: altura e hash nos 3 peers]
+        Ledger --> FabricMet[Endpoint Prometheus 9443 em peer0 e orderer0 - sem coletor]
     end
     subgraph Ausente[Nao instalado no cluster atual]
         Prom[Prometheus - metricas de infraestrutura]
@@ -305,6 +331,15 @@ No Mac, com Docker Desktop:
   kubectl --context kind-scattered-training logs deployment/training-agent -n uva -c agent --tail=100
 /Applications/Docker.app/Contents/Resources/bin/docker exec dynamos-dev \
   kubectl --context kind-scattered-training logs deployment/api-gateway -n training-system -c api-gateway --tail=100
+```
+
+Ledger e analise SAST (na pasta horus-governance):
+
+```bash
+python3 tools.py ledger status
+python3 tools.py ledger verify
+/Applications/Docker.app/Contents/Resources/bin/docker exec dynamos-dev \
+  kubectl --context kind-scattered-training logs deployment/horus-sast-agent -n uva --tail=100
 ```
 
 Arquitetura validada com dados sinteticos; nao implementa OIDC, TLS de producao,

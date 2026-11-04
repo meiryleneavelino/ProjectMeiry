@@ -1,0 +1,5 @@
+.local/
+__pycache__/
+chaincode/build/
+gateway/build/
+.venv/
